@@ -1,0 +1,160 @@
+---
+title: "MTH422A"
+author: "Charitha"
+date: "2024-01-31"
+output: html_document
+---
+
+## Assignment - 1
+
+### Question - 1
+$X_1,..X_N \sim bernolli(\theta)$ and $Y_N = \sum X_i \sim Binomal(N,\theta)$ 
+
+$\bar{Y}_N = N^{-1}Y_N$ have a distribution whose moment generating function is $\{\theta e^{t/N} + (1-\theta)\}^N$.
+
+Support = $\{0,\frac{1}{N},\frac{2}{N},....1\}$
+
+```{r}
+# Define the true distribution of Y
+true_cdf <- function(y) {
+  pnorm(y, mean = 0, sd = 1)
+}
+
+# Function to calculate CDF of sample mean based on CLT
+clt_cdf <- function(y, N) {
+  pnorm(y, mean = 0, sd = 1/sqrt(N))
+}
+
+# Function to compute Kolmogorov-Smirnov distance
+ks_distance <- function(cdf1, cdf2, y_values) {
+  max(abs(cdf1(y_values) - cdf2(y_values)))
+}
+
+# Define the values of N
+Ns <- c(10, 50, 500)
+
+# Calculate and print KS distances for each N
+for (N in Ns) {
+  # Generate N random samples from standard normal distribution
+  Y_samples <- rnorm(N, mean = 0, sd = 1)
+  
+  # Compute sample mean
+  Y_mean <- mean(Y_samples)
+  
+  # Calculate KS distance
+  ks_dist <- ks_distance(true_cdf, function(y) clt_cdf(y, N), Y_mean)
+  
+  cat("KS distance for N =", N, ":", ks_dist, "\n")
+}
+
+```
+
+
+### Question - 2
+Given $X_i \sim \text{Gamma}(\alpha,\lambda)$ where $\alpha$ is shape parameter and $\lambda$ is scale parameter.\\
+By using the characteristic function, we found that the distribution of \(\bar{X}_N = N^{-1} \sum_{n=1}^N X_n \text{ follows Gamma}(\alpha N,\frac{\lambda}{N}) \)
+
+
+### Question - 3
+Given $X$ is random variable with density function $f_X(x) = 2K_0(2\sqrt x). K_0$ is Bessel function.
+
+To check if $f_X(x)$ is a valid pdf or not.
+
+ - $f_X(x) \ge 0$
+ 
+ - $\int f_X(x) = 1$
+ 
+```{r}
+fx<- function(x)
+{
+  a <- 2*besselK(2*sqrt(x),nu=0)
+  return(a)
+}
+
+## integrate the function from 0 to inf as function is even, we took 2 times the bessel function
+ans <- integrate(fx,lower=0,upper=Inf)
+ans
+```
+
+$f_X(x)$ is a valid pdf as $\int f_X(x) = 1$.
+
+A hierarchical representation of $X$ is $X|Y \sim \text{Exp}(1/y)$ and $Y \sim \text{Inverse Gamma}(2,1)$.
+
+
+### Question - 4
+Given $X_1 \sim N(0,1)$ and $X_t|X_{t-1} \sim N(\rho X_{t-1},1-\rho^2)$ for all $t = 2,3,...,T$.
+
+-  The joint distribution of $\mathbf{X} = (X_1,......,X_T)$ 
+ 
+\begin{align*}
+      f_{\mathbf{X}}(x_1,....,x_T) & = f(x_1)\Pi_{t=2}^T f(x_t|x_{t-1})
+      & = \frac{1}{2\pi (1-\rho^2)^{1/2}} exp\{\frac{1}{2(1-\rho^2)} \sum_{t=2}^T (x_t - \rho x_{t-1})^2 - \frac{1}{2} x_1^{2} \}
+   \end{align*}
+
+- Conditional distribution of $X_t$ given $X_1,X_2,....,X_{t-1},X_{t+1},...,X_T$ 
+
+\begin{align*}
+ f(x_t|x_1,..x_{t-1},x_{t+1},..x_T) & = f(x_t|x_{t-1})
+ & = \frac{1}{2\pi (1-\rho^2)^{1/2}} exp\{\frac{1}{2(1-\rho^2)} (x_t - \rho x_{t-1})^2\}
+\end{align*}
+
+
+### Question - 5
+$\mathbf{X} \sim MVD(0,\Sigma)$, also individually $X_i$ follows uni-variate normal distribution.
+
+Thus any linear combination of $X_i$ is also normal distribution.
+
+[$X_i|Z \sim N(Z,1-\rho) \text{ and } Z \sim N(0,\rho)$]
+
+### Question - 6
+Given $Y_1,...Y_T|X \sim Poisson(X)$ and $X \sim Gamma(a,b)$.\\
+By Bayes theorem, the conditional distribution of $X$ given $Y_1,.....,Y_T$ follows Gamma distribution of shape parameter $\sum y_i + a$ and scale parameter $b+T$.
+
+\( X|Y_1,...Y_T \sim \text{Gamma}(\sum y_i+a,b+T) \)
+
+
+### Question - 7
+We will be drawing $10^4$ IID samples from the uniform distribution within the curvature $(x^2 +y^2–1)^3 \le x^2y^3$ using acceptance-rejection sampling.
+
+```{r}
+# function to check if the given point(x,y) is satisfy this condition
+curvature <- function(x,y)
+{
+  return((x^2+y^2-1)^3 <= x^2 * y^3)
+}
+ 
+# generate samples
+generate <- function(n)
+{
+  samples <- matrix(NA, ncol = 2, nrow = n)
+  count <- 0
+  # in place of (-1,1) we are taking (-2,2) box as it cover the overall graph.
+  while (count < n) {
+    x <- runif(n=1,min=-2,max=2) 
+    y <- runif(n=1,min=-2,max=2)
+    
+    if (curvature(x, y)) {
+      count <- count + 1
+      samples[count, ] <- c(x, y)
+    }
+  }
+  return(samples)
+}
+
+samples <- generate(1e4)
+
+plot(samples,pch=16,main="Acceptance-Rejection Sampling",col="red")
+```
+
+To check the time required to draw these samples
+```{r,warning=FALSE}
+library(tictoc)
+# Start the timer
+tic()
+
+# Your code goes here
+Sys.sleep(1)  
+
+# Stop the timer and print elapsed time
+toc()
+```
