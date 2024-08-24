@@ -1,0 +1,759 @@
+---
+title: "MTH422_Assignment-4"
+author: "Charitha"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Assignment - 4
+
+## question - 1
+
+##### (10) 
+
+Given the data is the number of marine bivalve species discovered each year from $2010-2015$ was $64, 13, 33,18, 30, 20$.
+
+Given $Y_t$ as the number of species discovered in year $2009 + t$.
+
+\begin{align*}
+  Y_t | \alpha, \beta & \sim \text{Poisson}(\lambda_t)\\
+  \lambda_t & = \text{exp}(\alpha + \beta t) \\
+  \alpha, \beta & \sim \text{Normal}(0,100)
+\end{align*}
+
+Using the above information, summarize the posterior of $\alpha$ and $\beta$ by using JAGS to fit the model.
+
+```{r,warning=FALSE,echo=FALSE}
+rm(list = ls())
+set.seed(123)
+y <- c(64,13,33,18,30,20)
+t <- length(y)
+  
+library(rjags)
+library(coda)
+data <- list(y = y, t = t)
+params <- c("alpha","beta")
+burn <- 1e4
+n.iter <- 2e4
+thin <- 10
+n.chains <- 2
+
+model_string <- textConnection("model{
+     # likelihood
+     for(i in 1:t){
+       y[i] ~ dpois(lambda[i])
+     } 
+     # priors
+     alpha ~ dnorm(0,0.0001)
+     beta ~ dnorm(0,0.0001)
+     for(i in 1:t){
+       lambda[i] <- exp(alpha + (beta * i))
+     }
+}")
+
+model <- jags.model(model_string,data = data, n.chains = n.chains, quiet = TRUE)
+update(model, burn, progress.bar = "none")
+samples <- coda.samples(model, variable.names = params, thin = thin, n.iter = n.iter, progress.bar = "none")
+plot(samples)
+
+cat("Summary of Samples")
+summary(samples)
+```
+
+As the $\beta$ (slope) is significantly different from zero, it suggests that the rate of discovery is changing over time.We can also look at the 95% credible intervals to see if they include zero, which would indicate no significant change.
+
+##### (11)
+Solving the above in **Metropolis sampler**
+
+```{r,warning=FALSE,echo=FALSE}
+# Metropolis sampler
+set.seed(123)
+rm(list = ls())
+y <- c(64,13,33,18,30,20)
+t <- length(y)
+# Function to calculate the log-likelihood
+log_likelihood <- function(y, lambda) {
+  sum(dpois(y, lambda, log = TRUE))
+}
+
+# Function to generate a proposal value from a normal distribution
+propose <- function(current_value, scale) {
+  rnorm(1, mean = current_value, sd = scale)
+}
+
+# Function to perform Metropolis-Hastings sampling
+metropolis_sampler <- function(y,t, n.iter, burn, thin, alpha_init, beta_init, scale) {
+  # Initialize parameters
+  alpha <- alpha_init
+  beta <- beta_init
+  
+  # Initialize storage for samples
+  samples_mh <- matrix(NA, nrow = (n.iter - burn)/thin, ncol = 2)
+  accept_count_alpha <- 0
+  accept_count_beta <- 0
+  
+  # Metropolis-Hastings sampling loop
+  for (iter in 1:n.iter) {
+    # Propose new values for alpha and beta
+    alpha_proposed <- propose(alpha, scale)
+    beta_proposed <- propose(beta, scale)
+    
+    # Calculate the corresponding lambdas
+    lambda_proposed <- exp(alpha_proposed + beta_proposed * (1:t))
+    lambda_current <- exp(alpha + beta * (1:t))
+    
+    # Calculate the log-likelihoods
+    log_likelihood_proposed <- log_likelihood(y, lambda_proposed)
+    log_likelihood_current <- log_likelihood(y, lambda_current)
+    
+    # Calculate the log of the Metropolis-Hastings ratio
+    log_mh_ratio_alpha <- log_likelihood_proposed - log_likelihood_current
+    log_mh_ratio_beta <- log_likelihood_proposed - log_likelihood_current
+    
+    # Accept or reject the proposal for alpha
+    if (log(runif(1)) < log_mh_ratio_alpha) {
+      alpha <- alpha_proposed
+      accept_count_alpha <- accept_count_alpha + 1
+    }
+    
+    # Accept or reject the proposal for beta
+    if (log(runif(1)) < log_mh_ratio_beta) {
+      beta <- beta_proposed
+      accept_count_beta <- accept_count_beta + 1
+    }
+    
+    # Store samples after burn-in and thinning
+    if (iter > burn && iter %% thin == 0) {
+      samples_mh[(iter - burn) / thin, ] <- c(alpha, beta)
+    }
+  }
+  
+  # Calculate acceptance ratios
+  acceptance_ratio_alpha <- accept_count_alpha / n.iter
+  acceptance_ratio_beta <- accept_count_beta / n.iter
+  
+  return(list(samples_mh = samples_mh, acceptance_ratio_alpha = acceptance_ratio_alpha, acceptance_ratio_beta = acceptance_ratio_beta))
+}
+
+# Set parameters
+burn <- 10000
+n.iter <- 20000
+thin <- 10
+alpha_init <- 0
+beta_init <- 0
+scale <- 0.1  # Scale for the proposal distribution
+
+# Perform Metropolis-Hastings sampling
+result <- metropolis_sampler(y,t , n.iter, burn, thin, alpha_init, beta_init, scale)
+
+# Extract samples
+samples_mh <- result$samples_mh
+acceptance_ratio_alpha <- result$acceptance_ratio_alpha
+acceptance_ratio_beta <- result$acceptance_ratio_beta
+
+# Plot trace plots
+par(mfrow = c(2, 1))
+plot(samples_mh[, 1], type = "l", xlab = "Iteration", ylab = "Alpha", main = "Trace Plot for Alpha")
+abline(h = mean(samples_mh[, 1]),col="red")
+plot(samples_mh[, 2], type = "l", xlab = "Iteration", ylab = "Beta", main = "Trace Plot for Beta")
+abline(h = mean(samples_mh[, 2]),col="red")
+
+cat("Acceptance ratio of alpha is",acceptance_ratio_alpha,"\n")
+cat("Acceptance ratio of beta is",acceptance_ratio_beta,"\n")
+
+cat("Summary of samples using Metropolis sampler \n")
+summary(samples_mh)
+```
+
+
+## question - 2
+Normal mixture model 
+
+\begin{align*}
+  Y_i | \theta & \sim f(y|\theta) \\
+  f(y|\theta) & = \frac{1}{2} [\phi(y-\theta) + \phi(y)] \\
+  \phi(z) & = \frac{1}{\sqrt{2\pi}} \text{exp}(\frac{-z^2}{2})
+\end{align*}
+
+### (a)
+```{r}
+rm(list = ls())
+set.seed(27695)
+theta_true <- 4
+n <- 30
+B <- rbinom(n,1,0.5)
+Y <- rnorm(n,B*theta_true,1)
+```
+
+The above R code generates samples from $f(y|\theta)$.
+
+- **B** gives a vector of length $n$ containing binary indicators ($0,1$) with equal probability.
+
+- **Y** gives a vector of samples from mixture of two normal distributions.
+   
+   * If B[i] = 0, then Y[i] is generated from the density function represents the standard normal distribution N(0,1).
+   
+   * If B[i] = 1, the density function represents the shifted normal distribution N$(\theta_{true},1)$.
+
+### (b)
+Plot $f(y|\theta)$ for $y \in [-3,10]$ separately for $\theta = \{2,4,6\}$.
+
+```{r,warning=FALSE,echo=FALSE}
+set.seed(2764)
+par(mfrow = c(2, 2))
+theta <- c(2,4,6)
+for(i in 1:length(theta))
+{
+  theta_true <- theta[i]
+  n <- 30
+  B <- rbinom(n,1,0.5)
+  Y <- rnorm(n,B*theta_true,1)
+  plot_title <- paste("Density plot of Y with theta =", theta[i])
+  density_plot <- density(Y, main = plot_title, xlab = "Y", ylab = "Density")
+  plot(density_plot, main = plot_title,xlim = c(-4,11))
+}
+```
+
+### (c)
+Assume prior of $\theta \sim$ Normal($0,10^2$). MAP estimator of $\theta$ 
+
+```{r,warning=FALSE,echo=FALSE}
+set.seed(123)
+theta_true <- 4
+n <- 30
+B <- rbinom(n,1,0.5)
+Y <- rnorm(n,B*theta_true,1)
+
+library(stats)
+# Define the negative log-posterior function
+nlp <- function(theta, Y) {
+  like <- 0.5 * dnorm(Y, 0, 1) + 0.5 * dnorm(Y, theta, 1)
+  prior <- dnorm(theta, 0, 10)
+  neg_log_post <- -sum(log(like)) - log(prior)
+  return(neg_log_post)
+}
+
+# Function to minimize (negative log-posterior)
+neg_log_post_wrapper <- function(theta, Y) {
+  nlp(theta, Y)
+}
+
+# Starting value for optimization
+start_theta <- 1
+
+# Run optimization with hessian = TRUE
+opt_result <- optim(start_theta, neg_log_post_wrapper, Y = Y, method = "BFGS", hessian = TRUE)
+
+# MAP estimate
+map_est <- opt_result$par
+cat("MAP estimator of theta is ",map_est,"\n")
+
+# Compute the Hessian matrix
+hessian <- opt_result$hessian
+
+# Compute the covariance matrix
+cov_matrix <- solve(hessian)
+
+# Standard deviation
+sd <- sqrt(diag(cov_matrix))
+cat("Standard deviation is ",sd,"\n")
+```
+
+### (d)
+Suppose  the prior distribution is $\theta \sim N(0,10^k)$. 
+
+$k \in \{0,1,2,3\}$
+
+```{r,warning=FALSE,echo=FALSE}
+# Libraries
+set.seed(123)
+theta_true <- 4
+n <- 30
+B <- rbinom(n,1,0.5)
+Y <- rnorm(n,B*theta_true,1)
+
+library(stats)
+
+# Define the negative log-posterior function
+nlp <- function(theta, Y, k) {
+  like <- 0.5 * dnorm(Y, 0, 1) + 0.5 * dnorm(Y, theta, 1)
+  prior <- dnorm(theta, 0, 10^k)
+  neg_log_post <- -sum(log(like)) - log(prior)
+  return(neg_log_post)
+}
+
+# Function to minimize (negative log-posterior)
+neg_log_post_wrapper <- function(theta, Y, k) {
+  nlp(theta, Y, k)
+}
+
+# Starting value for optimization
+start_theta <- 1
+
+# Set values of k
+k_values <- c(0, 1, 2, 3)
+
+# Plot colors
+colors <- c("skyblue","skyblue3","blue","darkblue")
+
+# Plot
+plot(NULL, xlim = c(2, 6), ylim = c(0, 2), xlab = "theta", ylab = "Density", main = "Posterior Density of theta for Different k Values")
+
+# Plot asymptotic normal distribution from part (c)
+curve(dnorm(x, map_est, sd), col = "red", lwd = 1, add = TRUE, n = 1000, from = -10, to = 20, ylab = "", xlab = "")
+
+map_est_k <- numeric(length(k_values))
+sd_k <- numeric(length(k_values))
+
+# Loop through k values
+for (i in seq_along(k_values)) {
+  
+  # Run optimization with hessian = TRUE
+  opt_result <- optim(start_theta, neg_log_post_wrapper, Y = Y, k = k_values[i], method = "BFGS", hessian = TRUE)
+  
+  # Compute the Hessian matrix
+  hessian <- opt_result$hessian
+  
+  # Compute the covariance matrix
+  cov_matrix <- solve(hessian)
+  
+  # Standard deviation
+  sd_k[i] <- sqrt(diag(cov_matrix))
+  
+  # MAP estimate
+  map_est_k[i] <- opt_result$par
+  
+  # Plot posterior density
+  curve(dnorm(x, map_est_k[i], sd_k[i]), col = colors[i],lty = c(4,3,2,1),lwd = 1, add = TRUE, n = 1000)
+  
+}
+# Add legend for k_values
+legend("topright", legend = paste("k =", k_values), col = colors, lty = c(4,3,2,1),lwd = 2, inset = 0.02)
+
+# Add legend for the asymptotic normal distribution
+legend("topleft", legend = "Asymptotic Normal", col = "red", lwd = 2, inset = 0.02)
+
+data <- data.frame(k_values = k_values, map_est_k = map_est_k, sd_k = sd_k)
+data
+```
+
+### (e)
+Use JAGS to fit this model via its mixture representation $Y_i|B_i,\theta \sim Normal(B_i\theta, 1)$, where $B_i \sim Bernoulli(0.5)$ and $\theta \sim Normal(0, 10^2)$. 
+
+```{r,warning=FALSE,echo=FALSE}
+set.seed(123)
+library(rjags)
+library(coda)
+
+n <- 30
+data <- list(Y = Y, n = n)
+params <- c("theta")
+burn <- 1e4
+n.iter <- 2e4
+thin <- 10
+n.chains <- 2
+
+model_string <- textConnection("model{
+     # likelihood
+     for(i in 1:n){
+        Y[i] ~ dnorm(B[i]*theta,1)
+     }
+     
+     # priors
+     for(i in 1:n){
+       B[i] ~ dbin(0.5,1)
+     }
+     theta ~ dnorm(0,0.01)
+}")
+
+model <- jags.model(model_string,data = data, n.chains = n.chains, quiet = TRUE)
+update(model, burn, progress.bar = "none")
+samples <- coda.samples(model, variable.names = params, thin = thin, n.iter = n.iter, progress.bar = "none")
+plot(samples)
+
+cat("Summary of theta samples \n")
+summary(samples)
+```
+
+-  Compare the posterior distribution of $\theta$ with the results from part (d).
+
+```{r,warning=FALSE,echo=FALSE}
+# Extract posterior samples of theta from JAGS
+theta_samples_jags <- as.matrix(samples)
+
+# Plot the posterior distributions of theta from JAGS
+plot(density(theta_samples_jags[, "theta"]), main = "Posterior Distribution of theta (JAGS)", xlab = "theta", col = "red", lwd = 2,ylim = c(0,2))
+for (i in seq_along(k_values)) {
+  curve(dnorm(x, map_est_k[i], sd_k[i]), col = colors[i], lty = c(4, 3, 2, 1), lwd = 2, add = TRUE, n = 1000)
+}
+legend("topright", legend = c("JAGS", paste("k =", k_values)), col = c("red", colors), lty = c(1, 4, 3, 2, 1), lwd = 2, inset = 0.02)
+```
+
+## question - 3
+
+Given the model $Y|n,p \sim \text{Binomial}(n,p)$ with prior distributions $n \sim \text{Poisson}(\lambda)$ and $p \sim \text{Beta}(a,b)$. The observed data is $Y = 10$.
+
+### (a)
+Convergence may be slow for this model due to several reasons:
+
+  - Correlation between parameters
+  
+  - complex likelihood
+  
+  - Inadequate Mixing
+  
+  - Non-informative prior
+  
+### (b)
+Fit the model using JAGS with $\lambda = 10, a = b = 1$.
+
+```{r,warning=FALSE,echo=FALSE}
+rm(list = ls())
+set.seed(123)
+y <- 10
+lambda <- 10
+a <- 1
+b <- 1
+
+library(rjags)
+library(coda)
+data <- list(y = y, lambda = lambda, a = a, b = b)
+params <- c("n","p","theta")
+burn <- 1e4
+n.iter <- 2e4
+thin <- 10
+n.chains <- 2
+
+model_string <- textConnection("model{
+     # likelihood
+     y ~ dbin(p,n)
+     
+     # priors
+     n ~ dpois(lambda)
+     p ~ dbeta(a,b)
+     theta <- n*p
+}")
+
+model <- jags.model(model_string,data = data, n.chains = n.chains, quiet = TRUE)
+update(model, burn, progress.bar = "none")
+samples <- coda.samples(model, variable.names = params, thin = thin, n.iter = n.iter, progress.bar = "none")
+plot(samples)
+
+cat("Summary of samples when a, b = 1")
+summary(samples)
+```
+
+### (c)
+Fit the model using JAGS with $\lambda = 10, a = b = 10$.
+
+```{r,warning=FALSE,echo=FALSE}
+rm(list = ls())
+set.seed(123)
+# change in a,b values
+y <- 10
+lambda <- 10
+a <- 10
+b <- 10
+
+library(rjags)
+library(coda)
+data <- list(y = y, lambda = lambda, a = a, b = b)
+params <- c("n","p","theta")
+burn <- 1e4
+n.iter <- 2e4
+thin <- 10
+n.chains <- 2
+
+model_string <- textConnection("model{
+     # likelihood
+     y ~ dbin(p,n)
+     
+     # priors
+     n ~ dpois(lambda)
+     p ~ dbeta(a,b)
+     theta <- n*p
+}")
+
+model <- jags.model(model_string,data = data, n.chains = n.chains, quiet = TRUE)
+update(model, burn, progress.bar = "none")
+samples <- coda.samples(model, variable.names = params, thin = thin, n.iter = n.iter, progress.bar = "none")
+plot(samples)
+
+cat("Summary of samples when a, b = 10")
+summary(samples)
+```
+
+**Effect of Prior Distribution of $p$ on Convergence**
+
+- For part (b), where $a = b = 1$, we use a non-informative prior for $p$. Non-informative priors generally have less influence on the posterior distribution, and convergence may be faster compared to informative priors.
+
+- For part (c), where $a = b = 10$, we use a more informative prior for $p$. Informative priors can sometimes lead to slower convergence, especially if the prior distribution is significantly different from the likelihood. However, in this case, with a relatively large value of $a = b = 10$, the prior is still relatively diffuse and may not have a significant impact on convergence.
+
+- Overall, the choice of prior distribution for $p$ can affect convergence, especially if the prior distribution is very informative or if it conflicts with the likelihood. However, in this example, the effect of the prior distribution of $p$ on convergence may be relatively minor due to the relatively non-informative nature of the priors used.
+
+## question - 4
+Given a clinical trial gave six subjects a placebo and six subjects a new weight loss medication. The response variable is the change in weight (pounds) from baseline.
+
+To Conduct a Bayesian analysis to compare the means of these two groups.
+
+Let $Y_1 \sim \text{Normal}(\mu, \sigma^2)$ which the $n_1 = 6$ response of Placebo
+
+Let $Y_2 \sim \text{Normal}(\mu + \delta, \sigma^2)$ which the $n_2 = 6$ response of Treatment.
+
+The goal is to compare $\delta$ to 0.
+
+```{r,warning=FALSE,echo=FALSE}
+rm(list = ls())
+set.seed(123)
+# placebo
+y1 <- c(2,-3.1,-1,0.2,0.3,0.4)
+ybar1 <- mean(y1)
+s12 <- mean((y1-ybar1)^2)
+n1 <- length(y1)
+
+# treatment
+y2 <- c(-3.5,-1.6,-4.6,-0.9,-5.1,0.1)
+ybar2 <- mean(y2)
+s22 <- mean((y2-ybar2)^2)
+n2 <- length(y2)
+
+# Posterior of the difference assuming equal variance
+delta_hat <- ybar2 - ybar1
+s2 <- (n1*s12 + n2*s22)/(n1+n2)
+scale <- sqrt(s2)*sqrt((1/n1)+(1/n2))
+df <- n1 + n2
+cred_interval <- delta_hat + scale*qt(c(0.025,0.975),df = df)
+cat("95% credible interval when we assuming equal variance \n")
+cred_interval
+
+# Posterior of delta assuming unequal variance using MC sampling
+mu1 <- ybar1 + sqrt(s12/n1)*rt(1000,df=n1)
+mu2 <- ybar2 + sqrt(s22/n2)*rt(1000,df=n2)
+delta <- mu2-mu1
+hist(delta,main="Posterior distribution of the difference in
+means")
+cat("95% credible interval when we assuming unequal variance \n")
+quantile(delta,c(0.025,0.975)) # 95% credible set
+```
+
+- The output of the code when we assume equal variance, the $95\%$ credible interval is $[-4.605,-0.194]$.The output of the code when we assume unequal variance, the $95\%$ credible interval is $[-4.940,0.133]$.
+
+- In equal variances case, we may say that treatment is effective as $0$ is not included in its $95\%$ credible interval, but in unequal variances case, we may say that treatment is not effective as $0$ is included in its $95\%$ credible interval.
+
+- We can conclude that the interpretation of treatment effectiveness should be cautious because the intervals span values both above and below zero, indicating that the treatment may or may not be effective.
+
+- It may be sensitive to the choice of prior, particularly if the prior distributions significantly influence the posterior distributions of the parameters.
+
+## question - 5
+Given the dataset called **Boston**, in which the response variable $(Y)$ is medv and the other $13$ variables are covariates that describe the neighborhood.
+
+\begin{align*}
+  Y_i & = \beta_0 + \sum_{j=1}^{p} X_{ij} \beta_j + \epsilon_i \\
+  Y & = X\beta + \epsilon
+\end{align*}
+
+\( \text{No of observations = }i = 1,2,....., 506 \\
+   \text{No of regression coefficients = }j = 1,2,...,p(=13) \)
+   
+### (a)
+Fit a Bayesian linear regression model with uninformative Gaussian priors for the regression coefficients. 
+
+\begin{align*}
+  \beta_0 & \sim \text{Normal}(0,100^{2}) \\
+  \sigma^2 & \sim \text{IG}(0.01,0.01) \\
+  \beta_1,....\beta_p & \sim \text{Normal}(0,100^{2}) \text{ independent}
+\end{align*}
+
+```{r,warning=FALSE,echo=FALSE}
+# Gaussian uninformative prior
+rm(list=ls())
+
+library(MASS)
+data(Boston)
+
+Y <- Boston$medv
+X <- as.matrix(Boston[,-14])
+X <- cbind(rep(1,506),X)
+n <- length(Y)
+p <- 13
+
+# standardize for easy calculating
+X[ , 2:(p+1)]  <- apply(X[ , 2:(p+1)] ,2,scale)
+
+library(rjags)
+library(coda)
+library(fda)
+data <- list(Y = Y, X = X, n = n, p = p)
+params <- c("beta")
+burn <- 1e4
+n.iter <- 2e4
+thin <- 10
+n.chains <- 2
+
+model_string <- textConnection("model{
+     # likelihood
+     for(i in 1:n){
+       Y[i] ~ dnorm(inprod(X[i,],beta[]),tau)
+     } 
+     # priors
+     beta[1] ~ dnorm(0,0.0001)
+     for(j in 2:(p+1)){
+       beta[j] ~ dnorm(0,0.0001)
+     }
+     tau ~ dgamma(0.01,0.01)
+}")
+
+model <- jags.model(model_string,data = data, n.chains = n.chains, quiet = TRUE)
+update(model, burn, progress.bar = "none")
+samples1 <- coda.samples(model, variable.names = params, thin = thin, n.iter = n.iter, progress.bar = "none")
+# Set the layout to have 2 rows and 7 columns
+par(mfrow = c(2, 7),pty = "m")
+
+# Increase the width of the plot window
+op <- par(mar = c(4, 4, 2, 1) + 0.1)
+
+# Plot the samples
+plot(samples1)
+
+# Reset the plot settings
+par(op)
+
+cat("Summary of beta samples with Gaussian priors \n")
+summary(samples1)
+```
+
+### (b)
+To Perform a classic least squares analysis.
+
+```{r,warning=FALSE,echo=FALSE}
+library(stats)
+x <- X[ ,-1]
+model <- lm(Y~x,data = Boston)
+summary(model)
+```
+
+- The values of regression coefficients in both Bayesian linear regression and classic least squares analysis are almost similar numerically and conceptually.
+
+### (c)
+Fit the Bayesian model with double exponential priors for the
+regression coefficients.
+
+\begin{align*}
+  \beta_0 & \sim \text{Normal}(0,100^{2}) \\
+  \sigma^2 & \sim \text{IG}(0.01,0.01) \\
+  \beta_1,....\beta_p & \sim \text{Double Exponential}(0,\sigma^2 * \sigma_{\beta}^2) \text{ independent} \\
+  \sigma_{\beta}^2 & \sim \text{IG}(0.01,0.01) 
+\end{align*}
+
+```{r,warning=FALSE,echo=FALSE}
+# double exponential priors
+library(smoothmest)
+model_string <- textConnection("model{
+  # Likelihood
+  for(i in 1:n){
+    Y[i] ~ dnorm(inprod(X[i,],beta[]), tau)
+  }
+  # Priors
+  beta[1] ~ dnorm(0, 0.0001)
+  for(j in 2:(p+1)){
+    beta[j] ~ ddexp(0, tau * taub)
+  }
+  tau ~ dgamma(0.01, 0.01)
+  taub ~ dgamma(0.01, 0.01)
+}")
+
+model <- jags.model(model_string, data = data, n.chains = n.chains, quiet = TRUE)
+update(model, burn, progress.bar = "none")
+samples3 <- coda.samples(model, variable.names = params,thin = thin, n.iter = n.iter, progress.bar = "none")
+# Set the layout to have 2 rows and 7 columns
+par(mfrow = c(2, 7),pty = "m")
+
+# Increase the width of the plot window
+op <- par(mar = c(4, 4, 2, 1) + 0.1)
+
+# Plot the samples
+plot(samples3)
+
+# Reset the plot settings
+par(op)
+
+cat("Summary of beta samples with double exponential priors \n")
+summary(samples3)
+```
+
+**Double Exponential Priors:**
+
+- The use of double exponential priors introduces regularization to the model, which can shrink coefficients towards zero and prevent overfitting.
+
+ - The summary of the fit with double exponential priors provides estimates of the regression coefficients and their uncertainties under the Bayesian framework.
+ 
+**Uninformative Gaussian Priors:**
+
+- Uninformative Gaussian priors provide minimal regularization and allow the data to dominate the inference process.
+
+- The summary of the fit with uninformative Gaussian priors also provides estimates of the regression coefficients and their uncertainties.
+
+### (d)
+Fit a Bayesian linear regression model in **(a)** using only the first $500$ observations and find the posterior predictive distribution for the final $6$ observations
+
+```{r,warning=FALSE,echo=FALSE}
+# posterior predictive distribution(PPD)
+library(HadamardR)
+y_given <- Y[c(501:506)]
+n <- 500
+n_pred <- 6
+X_pred <- X[501:506,]
+y_pred <- rep(0,6)
+
+data <- list(Y = Y, X = X, n = n, p = p, y_pred = y_pred, X_pred = X_pred, n_pred = n_pred)
+
+model_string <- textConnection("model{
+     # likelihood
+     for(i in 1:n){
+       Y[i] ~ dnorm(inprod(X[i,],beta[]),taue)
+     } 
+     
+     # priors
+     beta[1] ~ dnorm(0,0.0001)
+     for(j in 2:(p+1)){
+       beta[j] ~ dnorm(0,taue*taub)
+     }
+     taue ~ dgamma(0.01,0.01)
+     taub ~ dgamma(1,1)
+     
+     # predictions
+     for(i in 1:n_pred){
+      y_pred[i] ~ dnorm(inprod(X_pred[i,],beta[]),taue)
+     }
+}")
+
+params <- c("beta","taue")
+model <- jags.model(model_string,data = data, n.chains = n.chains, quiet = TRUE)
+update(model, burn, progress.bar = "none")
+samples4 <- coda.samples(model, variable.names = params, thin = thin, n.iter = n.iter, progress.bar = "none")
+#plot(samples4)
+summary(samples4)
+
+beta_samples <- samples4[[1]]
+beta_samples <- as.matrix(beta_samples[,-15])
+tau_samples <- samples4[[1]]
+tau_samples <- as.matrix(tau_samples[,15])
+S <- nrow(beta_samples)
+n_pred <- nrow(X_pred)
+y_pred <- matrix(NA,S,n_pred)
+sigma <- 1/sqrt(tau_samples)
+
+for(s in 1:S){
+  y_pred[s, ] <- X_pred%*%beta_samples[s, ] + rnorm(n_pred,0,sigma[s])
+}
+y_pred <- colMeans(y_pred)
+y_pred <- round(y_pred,2)
+
+plot(1:6,y_pred,type="l",pch=16,col="red",xlab="Index",ylab="medv",ylim = c(10,30))
+lines(1:6,y_given,col="darkgreen")
+legend("topleft", legend = c("Y_pred", "Y_given"), col = c("red", "darkgreen"),lty = 1)
+```
+
+- The predicated $Y$'s are mostly same as the given $Y$'s reasonably.
+
+
