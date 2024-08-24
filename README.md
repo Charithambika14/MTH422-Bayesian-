@@ -1,1 +1,1 @@
-# MTH422-Bayesian-
+# MTH422-Bayesian Analysis
