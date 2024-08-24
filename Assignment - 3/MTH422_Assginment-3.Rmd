@@ -1,0 +1,624 @@
+---
+title: "MTH422_Assignment-3"
+author: "Charitha"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Assignment - 3
+
+### Question - 1
+
+### (a)
+
+Jeffreys' prior distribution and report the posterior $95\%$ credible set for each county.
+
+we have considered the approve as no of success and (approve + disapprove) as total numbers, it means we can assume it may be **Binomial distribution**. Then the Jeffreys' prior distribution is **Beta(0.5,0.5)**.
+
+```{r}
+set.seed(123)
+approve <- c(12,90,80,5,63,15,67,22,56,33)
+disapprove <- c(50,150,63,10,63,8,56,19,63,19)
+county <- 1:10
+
+jeffreys_CI <- function(p,q) 
+{
+  n <- p + q
+  beta_lower <- qbeta(0.025, p + 0.5, q + 0.5)
+  beta_upper <- qbeta(0.975, p + 0.5, q + 0.5)
+  return(c(beta_lower * n, beta_upper * n))
+}
+
+for (i in 1:length(approve)) 
+{
+  p <- approve[i]
+  q <- disapprove[i]
+  CI <- jeffreys_CI(p,q)
+  cat("County", county[i], ":\n")
+  cat("Posterior 95% Credible Interval: (", CI[1], ", ", CI[2], ")\n\n")
+}
+```
+
+### (b)
+
+For finding a and b,
+
+```{r}
+set.seed(123)
+prop <- approve/(approve + disapprove)
+
+#sample proportions
+smean <- mean(prop)
+svariance <- var(prop)
+
+# Solve for a and b
+a <- smean * ((smean * (1 - smean)) / svariance - 1)
+b <- (1 - smean) * ((smean * (1 - smean)) / svariance - 1)
+
+a
+b
+```
+
+### (c)
+
+Empirical Bayesian analysis, for above after finding a and b. The prior is **Beta(a,b)** and Likelihood is **Binomial(n,p)** then the posterior is **Beta(y+a,n-y+b)**.
+
+```{r}
+set.seed(100)
+empirical_CI <- function(p, q, a ,b)
+{
+  n <- p + q
+  post_a <- p + a
+  post_b <- q + b
+  beta_lower <- qbeta(0.025, post_a, post_b)
+  beta_upper <- qbeta(0.975, post_a, post_b)
+  return(c(beta_lower * n, beta_upper * n)) 
+}
+
+posterior_credible_sets <- list()
+
+for (i in 1:length(approve)) 
+{
+  p <- approve[i]
+  q <- disapprove[i]
+  CI <- empirical_CI(p, q, a, b)
+  posterior_credible_sets[[paste0("County", county[i])]] <- CI
+  cat("County", county[i], ":\n")
+  cat("Posterior 95% Credible Interval: (", CI[1], ", ", CI[2],")\n\n")
+}
+```
+
+### (d)
+
++ **Jeffreys' Prior Analysis:**
+
+  * Advantages:
+  
+     - The Jeffreys' prior is considered non-informative and can be used when no prior information is available.
+     
+     - Conceptually simple and easy to implement.
+     
+  * Disadvantages:
+  
+     - Does not incorporate any information from the observed data, which might lead to wider posterior credible intervals.
+     
+    - Might not be appropriate when there is relevant prior information available.
+    
++ **Empirical Bayesian Analysis:**
+
+   * Advantages:
+   
+     - Incorporates some information from the observed data by estimating the prior distribution, potentially leading to narrower posterior credible intervals.
+     
+     - Provides a systematic way to incorporate data-driven prior information.
+     
+   * Disadvantages:
+   
+     - Relies on the method of moments to estimate the prior distribution, which might not capture the true underlying prior distribution accurately, especially with limited data.
+     
+     - Results can be sensitive to the choice of prior estimation method.
+
+### Question - 2
+
+### (a)
+MAP estimator for $\mu$.
+\begin{align*}
+  \hat{\mu}_{MAP} & = \text{arg max}_{\mu}\{\text{log}(f(\mu|\mathbf{Y})) + \text{log}(\pi(\mu))\} \\
+  & = \text{arg max}_{\mu} \text{log}(f(\mu|\mathbf{Y})) \\
+  & = \text{arg max}_{\mu} \text{log} \{\Pi_{i=1}^n \frac{1}{\sqrt{2\pi}\sigma_i} \text{exp}[\frac{-(Y_i-\mu)^2}{2\sigma_i^2}]\}
+\end{align*}
+
+### (b)
+
+We observe 
+$n = 3, Y_1 = 12, Y_2 = 10, Y_3 = 22, \sigma_1 = \sigma_2 = 3 and
+\sigma_3 = 10,\text{the MAP estimate of }\mu$
+ 
+```{r}
+Y <- c(12,10,22)
+sigma <- c(3,3,10)
+sigma2 <- sigma^2
+post_var <- 1/sum(1/(sigma2))
+map_mean <- sum(Y/(sigma2)) * post_var
+map_mean
+```
+ 
+### (c)
+
+Numerical integration to compute posterior mean of $\mu$.
+
+```{r}
+posterior_distribution <- function(mu){
+  mu * dnorm(mu, mean=mean(Y), sd=sqrt(post_var))
+}
+
+post_mean_numerical <- integrate(posterior_distribution, -Inf, +Inf)$value
+post_mean_numerical
+```
+ 
+### (d)
+Graph of the posterior distribution of $\mu$.
+
+```{r}
+mu_values <- seq(-5,30,length.out=1e3)
+post_values <- sapply(mu_values,posterior_distribution)
+plot(mu_values,post_values,pch=16,main = "posterior distribution of mu")
+abline(v=map_mean,col="darkgreen",lwd=2)
+abline(v=post_mean_numerical,col="red")
+```
+
+### Question - 3
+
+### (a)
+
+- Full conditional posterior distributions for $\sigma_1^2$ is Inverse Gamma($a + \frac{1}{2}, \frac{Y_1^2}{2} + b$).
+
+- Full conditional posterior distributions for $b$ is Exponential($\frac{1}{\sigma_1^2} + 1$).
+
+### (b)
+
+Pseudo code for Gibbs Sampling
+
+- **Step-1:** Set initial values $( {\sigma_1^2}^{(0)},b^{(0)} )$
+
+- **Step-2:** Updating 
+
+  * For iteration t,
+  
+    - FC1 : Draw ${\sigma_1^2}^{(t)}|b^{(t-1)},\mathbf{Y}$
+    
+    - FC2 : Draw $b^{(t)}|{\sigma_1^2}^{(t)},\mathbf{Y}$
+    
+  We repeat step $B$ times ang get the posterior draws
+  
+  \begin{align*}
+     {\sigma_1^2}^{(1)} &, {\sigma_1^2}^{(2)},....... {\sigma_1^2}^{(B)} \\
+     b^{(1)} &, b^{(2)},.....,b^{(B)}
+  \end{align*}
+  
+### (c)
+
+Gibbs Sampling code. 
+
+Assume $n = 10, a = 10$ and $Y_i = i$ for $i = 1,2,....10$
+
+```{r,warning=FALSE}
+set.seed(123)
+library(MCMCpack)
+# Updating sigma2
+sigma2.update <- function(y,a,b)
+{
+  out <- rinvgamma(n = 10,shape = a + 0.5,scale = 0.5*y^2 + b)
+  return(out)
+}
+
+# updating b, but posterior of b is independent of sigma2 and y
+b.update <- function(y,sigma2)
+{
+  out <- rexp(1,rate = (sum(1/sigma2)) + 1)
+  return(out)
+}
+
+MCMC <- function(y,a,sigma2.init,b.init,iters)
+{
+  #chain initiation
+  sigma2 <- sigma2.init
+  b <- b.init
+  
+  # define chains
+  sigma2.chain <- matrix(NA,nrow=iters,ncol=10)
+  b.chain <- rep(NA,iters)
+  
+  # start MCMC
+  for(i in 1:iters)
+  {
+    sigma2 <- sigma2.update(y,a,b)
+    b <- b.update(y,sigma2)
+    
+    sigma2.chain[i,] <- sigma2
+    b.chain[i] <- b
+  }
+  
+  # return chains
+  out <- list(sigma2.chain = sigma2.chain, b.chain = b.chain)
+  return(out)
+}
+
+y <- 1:10
+MCMC.out <- MCMC(y = y[1],a = 10,sigma2.init = rep(var(y),10),b.init = 0,iters = 3e5)
+
+plot(MCMC.out$sigma2.chain[,1],xlab = "Iteration",ylab = "sigma2",type = "l")
+abline(h = mean(MCMC.out$sigma2.chain),col = "red")
+
+plot(MCMC.out$b.chain,xlab = "Iteration",ylab = "b",type = "l")
+abline(h = mean(MCMC.out$b.chain),col = "red")
+```
+
+### (d)
+For $a = 1$
+
+```{r}
+set.seed(123)
+y <- 1:10
+MCMC.out <- MCMC(y = y[1],a = 1,sigma2.init = rep(var(y),10),b.init = 0,iters = 3e4)
+
+plot(MCMC.out$sigma2.chain[,1],xlab = "Iteration",ylab = "sigma2",type = "l",main ="Marginal Posterior of sigma2 when a = 1")
+abline(h = mean(MCMC.out$sigma2.chain),col = "red")
+
+plot(MCMC.out$b.chain,xlab = "Iteration",ylab = "b",type = "l",main ="Marginal Posterior of b when a = 1")
+abline(h = mean(MCMC.out$b.chain),col = "red")
+```
+
+* Marginal Posterior of $\sigma_1^2$:
+
+   - As $a$ changes from $10$ to $1$, the shape parameter of posterior distribution of $\sigma_1^2$ decreases, the samples of $\sigma_1^2$ increases.
+   
+* Marginal Posterior of $b$:
+
+  - Changing the value of $a$ from $10$ to $1$ does not directly affect the update of $b$.
+  
+  - As $\sigma_1^2$ changes due to change in $a$, the samples of $b$ increases.
+
+### (e)
+In JAGS, 
+
+### Question - 4
+
+### (a)
+* **Option 1 (Emphasizing Player Variability)**
+
+   - This Beta distribution prior for $\theta_1$ effectively encapsulates the wide spectrum of shooting performances among players. Acting as a conjugate prior to the Binomial likelihood, it offers a versatile framework for modeling success probabilities, making it an ideal choice to represent the diverse skill levels of players in clutch situations.
+
+* **Option 2 (Accentuating Conjugate Prior's Benefit)**
+
+   - An essential feature of this model stems from the Beta distribution selected as the prior for $\theta_1$. Serving as a conjugate prior to the Binomial likelihood, the Beta distribution provides flexibility in modeling success probabilities. This adaptability is pivotal in encompassing the varied shooting abilities observed among NBA players during crucial free throw attempts.
+
+### (b)
+The parameter $m$ within the prior governs both the central tendency and dispersion of the Beta distribution. By applying an exponential transformation to $m$, we guarantee that the resulting shape parameters for the Beta distribution $(exp(m) * q_i$ and $exp(m) * (1 - q_i))$ remain positive, preserving the integrity of the Beta distribution. Introducing a Normal distribution for $m$ with a mean of 0 and a standard deviation of 10 enables the representation of variability in overall shooting performance among players, where higher m values signify greater overall success rates and vice versa. Thus, m holds a pivotal role in shaping the prior distribution and shaping prior beliefs regarding players' success rates in clutch shots.
+
+### (c)
+
+Full conditional distribution of $\theta_1$ is Beta$(y_1 + e^m q_1, n_1 -y_1 + e^m(1-q_1) )$
+
+### (d)
+
+```{r,echo=FALSE}
+# Data
+y <- c(64,72,55,27,75,24,28,66,40,13)
+n <- c(75,95,63,39,83,26,41,82,54,16)
+q <- c(0.845,0.847,0.880,0.674,0.909,0.898,0.770,0.801,0.802,0.875)
+
+#update parameters
+theta.update <- function(Y, n, m, q){
+  shape1 <- Y + exp(m)*q
+  shape2 <- n - Y + exp(m)*(1 - q)
+  out <- rbeta(10, shape1, shape2)
+  return(out)
+}
+
+log_posterior_m <- function(m, theta, q){
+  l1 <- sum((exp(m)*q-1)*log(theta))
+  l2 <- sum((exp(m)*(1-q)-1)*log((1-theta)))
+  l3 <-  m^2/20
+  
+  return(l1 + l2 - l3)
+}
+
+m.update <- function(m, theta, q, mh.m, accept.m){
+  m.c <- rnorm(1, m, mh.m)
+  R <- log_posterior_m(m.c, theta, q) - log_posterior_m(m, theta, q)
+  
+  if(log(runif(1)) < R){
+    m <-  m.c
+    acccept.m <- accept.m + 1
+  }
+  
+  return(list(m = m,
+              accept.m = accept.m))
+}
+
+#MCMC function
+MCMC <- function(Y,
+                 theta.init = NULL, m.init = NULL,
+                 n, q,iters = 4e3, burn.in = 2e3){
+  
+  #initial values
+  theta <- theta.init
+  m <- m.init
+  mh.m <- 1
+  accept.m <- 0
+  
+  #storage
+  theta.chain <- matrix(NA, nrow = iters, ncol = 10)
+  m.chain <- rep(NA, iters)
+  
+  #mcmc loop stars
+  for(i in 1:iters){
+    theta <- theta.update(Y, n, m, q)
+    m.det <- m.update(m, theta, q, mh.m, accept.m)
+    m <- m.det$m
+    accept.m <- m.det$accept.m
+    
+    
+    theta.chain[i,] <- theta
+    m.chain[i] <- m
+    
+  }
+  return.iters = (burn.in + 1):iters
+  output = list(theta = theta.chain[return.iters, ],
+                m = m.chain[return.iters],
+                acceptance_prob = accept.m/iters)
+}
+
+MCMC_output = MCMC(Y,theta.init = Y/n, m.init = rnorm(1),
+                   n, q,
+                   iters = 1e4, burn.in = 2e3)
+
+#Plots
+
+for(i in 1:10){
+  plot(MCMC_output$theta[,i], type = 'l',
+       main = paste0('MCMC chain for theta_',i),
+       ylab = paste0('theta_', i))
+  abline(h=mean(MCMC_output$theta[,i]),col="red")
+}
+
+plot(MCMC_output$m, type = 'l',
+     main = 'MCMC chain for m',
+     ylab = 'm')
+
+
+#credible intervals
+cred_interval_fun <- function(x){
+  return(c(quantile(x, c(0.025, 0.975))))
+}
+
+CI_theta <- t(apply(MCMC_output$theta, 2, cred_interval_fun))
+CI_m <-  cred_interval_fun(MCMC_output$m)
+
+parameter <- c("theta1","theta2","theta3","theta4","theta5","theta6","theta7","theta8","theta9","theta10","m")
+data <- data.frame(parameter = parameter, Lower =  c(CI_theta[1:10,1],CI_m[1]),Upper = c(CI_theta[1:10,2],CI_m[2]))
+data 
+```
+
+
+### (e)
+Using JAGS
+
+```{r,echo=FALSE}
+library(rjags)
+rm(list = ls())
+
+# Data
+Y <- c(64,72,55,27,75,24,28,66,40,13)
+n <- c(75,95,63,39,83,26,41,82,54,16)
+q <- c(0.845,0.847,0.880,0.674,0.909,0.898,0.770,0.801,0.802,0.875)
+
+data <- list(Y = Y, n = n, q = q, count = length(Y))
+
+model_string = textConnection("model{
+                              
+    #Likelihood
+    for(i in 1:count){
+    Y[i] ~ dbin(theta[i], n[i])
+    } 
+    
+    #Priors
+    for(i in 1:count){
+      theta[i] ~ dbeta(exp(m)*q[i], exp(m)*(1 - q[i]))
+    }
+    
+    m ~ dnorm(0, 1/10)
+}")
+
+inits <- list(theta = Y/n, m = rnorm(1))
+model <- jags.model(model_string, data = data, inits = inits, quiet = TRUE)
+
+#burn-in
+update(model, 2e3, progress.bar = 'none')
+
+#post burn-in samples
+params <- c('theta', 'm')
+samples <- coda.samples(model,
+                       variable.names = params,
+                       n.iter = 1e4, progress.bar = 'none')
+
+summary(samples)
+plot(samples)
+```
+
+### (f)
+
+**Custom MCMC Sampling:**
+
+   * Advantages:
+
+     - Flexibility: With custom code, you have full control over the model specification and sampling procedure. You can easily customize the algorithm to fit specific requirements or experimental designs.
+
+     - Learning Experience: Implementing MCMC algorithms from scratch helps in understanding the underlying concepts of Bayesian inference and MCMC methods. It provides a deeper insight into how the algorithms work.
+
+     -  Efficiency for Simple Models: For relatively simple models and small datasets, custom MCMC code can be efficient and straightforward to implement. It avoids the overhead of setting up and running external software like JAGS or Stan.
+
+   * Disadvantages:
+
+     - Complexity for Complex Models: Writing custom MCMC code becomes increasingly complex for more intricate models with high-dimensional parameter spaces or non-standard likelihood/prior distributions. Debugging and optimizing such code can be time-consuming.
+
+     - Verification and Validation: Custom MCMC code requires rigorous testing, verification, and validation to ensure correctness and reliability. Without thorough testing, there's a risk of errors leading to incorrect inferences.
+
+**JAGS (Just Another Gibbs Sampler):**
+
+   * Advantages:
+
+      - Ease of Use: JAGS provides a high-level modeling language (BUGS syntax) that simplifies model specification. It offers an intuitive and user-friendly interface for defining Bayesian models, making it accessible to researchers without extensive programming experience.
+
+      - Efficiency for Complex Models: JAGS is well-suited for complex Bayesian models with intricate structures, hierarchical dependencies, and large datasets. It efficiently handles sophisticated models without requiring manual tuning of sampling algorithms.
+
+      - Validation and Community Support: JAGS has been extensively validated and tested, providing confidence in its correctness and reliability. It benefits from a large user community, extensive documentation, and online support resources.
+
+   * Disadvantages:
+
+      - Limited Flexibility: While JAGS provides a wide range of modeling capabilities, it may not support certain advanced features or custom sampling algorithms required for highly specialized models.
+
+      - External Dependency: JAGS is an external software package that needs to be installed separately. It introduces a dependency on external software, potentially requiring additional setup and management.
+
+### Question - 5
+
+### (a)
+
+Given $Y_i|\theta \sim $ Laplace($\mu,\sigma$) for $i = 1,2,..,n$ where $\theta = (\mu,\sigma)$
+
+Probability density function of Laplace is 
+\begin{align*}
+  f(x) & = \frac{1}{2\sigma} \text{exp}(-\frac{|x-\mu|}{\sigma})
+\end{align*}
+
+Given improper prior 
+
+ - $\sigma \sim$ Uniform(0,100000)
+ 
+ - $\pi(\mu) = 1$ for all $\mu \in (-\infty,\infty)$
+
+```{r}
+set.seed(123)
+library(MASS)
+data(galaxies)
+Y <- galaxies
+
+# likelihood function
+likelihood <- function(mu, sigma, y) {
+  n <- length(y)
+  log_likelihood <- -n * log(2 * sigma) - sum(abs(y - mu) / sigma)
+  return(exp(log_likelihood))
+}
+
+# prior for mu
+prior_mu <- function(mu){
+  return (1)
+}
+
+# prior for sigma
+prior_sigma <- function(sigma) {
+  ifelse(sigma <= 0 | sigma > 100000,0,1) 
+}
+
+# posterior distribution
+posterior <- function(mu, sigma, y) {
+  return(likelihood(mu, sigma, y) * prior_sigma(sigma)*prior_mu(mu))
+}
+
+# MCMC sampling using Metropolis-Hastings algorithm 
+n_samples <- 8000  
+burn_in <- 1000      
+
+theta.init <- c(mean(Y), 100)  # Initial guess for theta = (mu,sigma)
+
+# Metropolis-Hastings loop
+theta.chain <- matrix(0, n_samples, 2)
+accept.count <- 0
+for (i in (burn_in + 1):n_samples) {
+  # Propose new candidate
+  mu <-  rnorm(1, mean = theta.init[1], 0.8)
+  sigma <-  rnorm(1, mean = theta.init[2], 0.8)
+  theta.prop <- c(mu, sigma)
+  
+  # Calculate acceptance probability
+  R <- exp(posterior(mu, sigma, Y) - posterior(theta.init[1],theta.init[1],Y))
+  u <- runif(1)
+  
+  if (u < R) {
+    theta.init <- theta.prop
+    accept.count <- accept.count + 1
+  }
+  
+  # Store sample
+  theta.chain[i, ] <- theta.init
+}
+
+plot(theta.chain[,1], theta.chain[,2], xlab=expression(mu), ylab=expression(sigma), main="Joint Posterior Distribution",type="l")
+
+# Plot marginal posterior distributions
+plot(theta.chain[,1], col="black", xlab=expression(mu), main="Marginal Posterior Distribution of mu")
+plot(theta.chain[,2], col="black", xlab=expression(sigma), main="Marginal Posterior Distribution of sigma")
+```
+
+### (b)
+
+Posterior mean of $\theta$ and plot Laplace PDF values against the observed data.
+
+```{r}
+set.seed(123)
+# Calculate posterior mean of theta
+mu_mean <- mean(theta.chain[,1])
+sigma_mean <- mean(theta.chain[,2])
+theta_mean <- c(mu_mean, sigma_mean)
+
+# Function to generate Laplace distributed samples
+rLaplace <- function(n, mu, sigma) {
+  u <- runif(n, 0, 1)
+  ifelse(u <= 0.5, mu - sigma * log(2 * u), mu + sigma * log(2 * (1 - u)))
+}
+
+# Generate data points from Laplace distribution with posterior mean parameters
+y_replicated <- rLaplace(length(Y), mu_mean, sigma_mean)
+
+
+# Plot data and replicated values
+plot(Y, type = "p", col = "black", pch = 16, ylim = range(c(Y, y_replicated)),
+     xlab = "Index", ylab = "Value", main = "Observed Data v/s Replicated Values")
+lines(y_replicated, col = "blue", lty = 2)
+legend("topright", legend = c("Observed Data", "Replicated Values"), 
+       col = c("black", "blue"), pch = c(16, NA), lty = c(NA, 2))
+
+```
+
+No, the model donot fit the data well.
+
+### (c)
+
+posterior predictive distribution (PPD) for a new observation $Y^{*}|\theta \sim $ Laplace$(\mu,\sigma)$.
+
+```{r}
+set.seed(123)
+# new observations
+y_new <- rLaplace(10000, mu_mean, sigma_mean)  
+
+# Plot ppd
+hist(y_new, breaks = 30, prob = TRUE, 
+     main = "Posterior Predictive Distribution", xlab = "Y*")
+
+ppd_mean <- mean(y_new)
+ppd_variance <- var(y_new)
+
+plugin_mean <- mu_mean
+plugin_variance <- 2 * sigma_mean^2  # Variance of Laplace distribution = 2 * sigma^2
+
+distribution_data <- data.frame(
+  Distribution = c("Posterior Predictive Distribution", "Plug-in Distribution"),
+  Mean = c(ppd_mean, plugin_mean),
+  Variance = c(ppd_variance, plugin_variance)
+)
+
+distribution_data
+```
+
+Mean and variance of corresponding ppd and plug-in are mostly similar
