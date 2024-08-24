@@ -1,0 +1,420 @@
+---
+title: "MTH422_Assignment-2"
+author: "Charitha"
+date: "`r Sys.Date()`"
+output: html_document
+---
+# Assignment - 2
+
+## 1
+Given $X_1,....,X_n|\mu,\sigma^2 \sim N(\mu,\sigma^2)$ are i.i.d
+
+- *Likelihood* 
+
+   \( \mathcal{L}(\mu,\sigma^2|X_1,....,X_n) \propto  (\sigma^2)^{-n} \text{exp}\{-\frac{\sum_{i=1}^n(X_i - \mu)^2}{2\sigma^2}\}\)
+   
+- *prior*
+
+   \(\pi(\mu,\sigma^2) = \pi(\mu|\sigma^2) \pi(\sigma^2)\) \\
+   
+   $\sigma^2 \sim \text{Inverse Gamma}(a,b)$ and $\mu|\sigma^2 \sim N(0,c\sigma^2)$ for large c and small a,b.
+   
+   * $\pi(\mu|\sigma^2) =  \frac{1}{\sqrt{2\pi c\sigma^2}} \text{exp}(-\frac{\mu^2}{2c\sigma^2})$
+   
+   * $\pi(\sigma^2) = \frac{b^a}{\Gamma(a)} (\sigma^2)^{-a-1} \text{exp}(-\frac{b}{\sigma^2})$ 
+   
+- *Posterior distribution $\pi(\mu|X_1,....,X_n)$* 
+
+  \begin{align*}
+  \pi(\mu|X_1,....,X_n) & \propto \int_0^\infty \mathcal{L}(\mu,\sigma^2|X_1,....,X_n) \text{ x } \pi(\mu,\sigma^2) \text{d}\sigma^2 \\
+  & \propto \int_0^\infty (\sigma^2)^{-\frac{n+2a+1}{2}-1} \text{exp}\{-\frac{1}{\sigma^2}(\frac{\sum_{i=1}^n (X_i - \mu)^2)}{2} + \frac{\mu^2}{2c} + b\} \text{d}\sigma^2 \\
+  \end{align*}
+    
+  On integrating,we give the final answer of Posterior distribution $\pi(\mu|X_1,....,X_n)$ 
+  
+  \begin{align*}
+  \pi(\mu|X_1,....,X_n) & = \frac{b^a}{(\sqrt{2\pi})^n \sqrt(2\pi c) \Gamma(a)} \frac{\Gamma(A)}{B^A}
+  \end{align*}
+  
+  here 
+  
+  - B = $\frac{\sum(X_i - \mu)^2}{2} + \frac{\mu^2}{2c} + b$
+  
+  - A = $\frac{n+2a+1}{2}$
+       
+- *Posterior predictive distribution of $X_{n+1}$ i.e $\pi(X_{n+1}|X_1, . . . , X_n)$*
+
+   Let $X_{n+1} = X^*$ and $\theta = (\mu,\sigma^2)$
+   
+  \begin{align*}
+     \pi(X^{*}|\mathbf{X})  & = \int f(X^{*}|\theta) p(\theta|\mathbf{X}) d\theta \\
+     f(X^{*}|\theta) & = \frac{1}{\sqrt{2\pi} \sigma} \text{exp}\frac{-(X^{*} - \mu)^2}{2\sigma^2} \\
+     p(\theta|\mathbf{X}) & \propto (\sigma^2)^{-(\frac{n+2a+1}{2})-1} \text{exp}\{-\frac{1}{\sigma^2} (\frac{\sum(X_i-\mu)^2}{2} + \frac{\mu ^2}{2c} + b)\}
+  \end{align*}
+   
+   Posterior predictive distribution 
+   
+   \begin{align*}
+   \pi(X^{*}|\mathbf{X})  & = \int_0^\infty f(X^{*}|\theta) p(\theta|\mathbf{X}) d\theta  \\
+     & \propto \int_0^\infty \frac{1}{\sigma^2} \text{exp}\frac{-(X^{*} - \mu)^2}{2\sigma^2} (\sigma^2)^{-(\frac{n+2a+1}{2})-1} \text{exp}\{-\frac{1}{\sigma^2} (\frac{\sum(X_i-\mu)^2}{2} + \frac{\mu ^2}{2c} + b)\} d\theta  \\
+     & \propto \int_0^\infty (\sigma^2)^{-\frac{n+2a+3}{2}-1} \text{exp}\{-\frac{1}{\sigma^2}(\frac{(X^{*} - \mu)^2}{2} + \frac{\sum (X_i - \mu)^2}{2} + \frac{\mu ^2}{2c} + b)\} d\theta 
+   \end{align*}
+   
+## 2
+
+#### Bayesian two sample test 
+-  *Likelihood* 
+
+   $X_1,...X_m|\mu_1,\sigma^2 \sim N(\mu_1,\sigma^2)$ and $Y_1,...Y_n|\mu_2,\sigma^2 \sim N(\mu_2,\sigma^2)$
+
+- *prior* 
+
+  $\pi(\mu_1,\mu_2,\sigma^2) = \pi(\mu_1|\sigma^2) \pi(\mu_2|\sigma^2)\pi(\sigma^2)$
+   
+- *Posterior distribution of $\mu_1 - \mu_2$* 
+
+    Let $\theta = \mu_1 - \mu_2$ then distribution of $\theta$ will be Normal with mean = 0 and variance = $2c\sigma^2$
+    
+\begin{align*}
+\pi(\theta|X_1,....X_n,Y_1,...Y_n) & = \int_0^{\infty} \mathcal{L}(\mu_1,\sigma^2|X_1,...X_n) \mathcal{L}(\mu_2,\sigma^2|Y_1,...Y_n) \pi(\theta) \pi(\sigma^2) d\sigma^2 \\
+\text{On calculating, we give} \\
+\pi(\theta|X_1,....X_n,Y_1,...Y_n) & = \frac{1}{(2\pi)^n} \frac{1}{\sqrt(2\pi c)} \frac{b^a}{\Gamma(a)} \frac{\Gamma(A)}{B^A}
+\end{align*}
+
+Here
+
+   * B = $\frac{\sum[(X_i - \mu_1)^2 + (Y_i - \mu_2)^2]}{2} + \frac{\theta^2}{4c} + b$
+   
+   * A = $n + a + \frac{1}{2}$
+
+```{r,warning=FALSE}
+set.seed(123)
+# given parameters
+mu1_true <- 1
+mu2_true <- 1.5
+sigma_true <- 2
+m <- 25
+n <- 30
+
+# Assumed Prior parameters
+c <- 1e4
+a <- 0.01
+b <- 0.01
+
+# Generate data
+data_x <- rnorm(1e4,mu1_true,sigma_true)
+data_y <- rnorm(1e4,mu2_true,sigma_true)
+
+# gamma function 
+gamma <- function(alpha)
+{
+  ans <- integrate(function(x){x^(alpha-1)*exp(-x)},0,Inf)$value
+  return(ans)
+}
+
+# calculated posterior for mu1-mu2
+posterior <- function(mu_diff)
+{
+  B <- sum((data_x-mu1_true)^2+(data_y-mu2_true)^2)/2 + (mu_diff)^2/(4*c) + b
+  A <- n+a+0.5
+  den <- ((2*pi)^n)*(sqrt(2*pi*c))*(gamma(a))*(B^A)
+  ans <- (b^a * gamma(A))/den
+}
+
+mu_diff_values <- seq(-500,500,length.out=1e4)
+posterior_values <- sapply(mu_diff_values,posterior)
+
+data <- data.frame(mu_diff_values,posterior_values)
+library(ggplot2)
+ggplot(data, aes(x = mu_diff_values,y=posterior_values)) +
+  geom_line(size=1,color="black") +
+  labs(x = "mu_diff",
+       y = "Posterior Distribution")
+```
+
+
+## 3
+
+- *Likelihood*
+
+\( X_1,....,X_m | \lambda_1 \sim  \text{Poisson}(\lambda_1) \text{ and } Y_1,....,Y_n | \lambda_2 \sim  \text{Poisson} (\lambda_2)\)
+
+
+- *Prior*
+
+  \(\lambda_1, \lambda_2 \sim \)  Gamma($a,b$)
+  
+- *Posterior distribution of $\theta = \frac{\lambda_1}{\lambda_1 + \lambda_2}$* 
+
+  - *Posterior of $\lambda_1$* 
+    
+\begin{align*}
+    \pi(\lambda_1|X_1,....,X_m) & \propto \mathcal{L}(\lambda_1|X_1,....,X_m) \pi(\lambda_1)  \\
+    \pi(\lambda_1|X_1,....,X_m) \sim \text{Gamma}(a+\sum_i^m X_i, b + m)
+\end{align*}
+
+  - *Posterior of $\lambda_2$* 
+    
+\begin{align*}
+    \pi(\lambda_2|Y_1,....,Y_n) & \propto \mathcal{L}(\lambda_2|Y_1,....,Y_n) \pi(\lambda_1)  \\
+    \pi(\lambda_2|Y_1,....,Y_n) \sim \text{Gamma}(a+\sum_i^n Y_i, b + n)
+\end{align*}
+
+  - *Posterior of $\theta$*
+   
+   \begin{align*}
+    \pi(\theta|X_1,....,X_m,Y_1,....,Y_n) & = \frac{\pi(\lambda_1|X_1,....,X_m)}{\pi(\lambda_1|X_1,....,X_m) + \pi(\lambda_2|Y_1,....,Y_n)} \\
+    \pi(\theta|X_1,....,X_m,Y_1,....,Y_n) & \propto \frac{\text{Gamma}(a+\sum_i^m X_i, b + m)}{\text{Gamma}(a+\sum_i^m X_i, b + m) + \text{Gamma}(a+\sum_i^n Y_i, b + n)}
+   \end{align*}
+   
+   
+```{r,warning=FALSE}
+set.seed(123)
+# given parameters
+lambda1 <- 2
+lambda2 <- 2.5
+m <- 10
+n <- 15
+
+# assumptions
+a <- 0.1
+b <- 0.1
+
+x <- rpois(1e3,lambda1)
+y <- rpois(1e3,lambda2)
+
+posterior_lambda1 <- rgamma(1e3,shape=a+sum(x),rate=b+m)
+posterior_lambda2 <- rgamma(1e3,shape=a+sum(y),rate=b+n)
+
+posterior_theta <- posterior_lambda1/(posterior_lambda1+posterior_lambda2)
+
+# summary of theta
+summary(posterior_theta)
+
+# histogram of posterior theta 
+hist(posterior_theta)
+
+# 95% HPD credible interval of theta
+library(MCMCpack)
+hpd_interval <- HPDinterval(as.mcmc(posterior_theta), prob = 0.95)
+hpd_interval
+cat("95% HPD credible interval of theta is ",hpd_interval)
+
+# hypothesis testing 
+mean(posterior_lambda1 == posterior_lambda2)
+```
+
+- $95\%$ HPD credible interval of $\theta$ is $(0.5312918,0.560722)$
+
+- In hypothesis testing, 
+
+  \(H_0 : \lambda_1 = \lambda_2  \text{ v/s } H_A : \lambda_1 \neq \lambda_2\) 
+  
+  As the mean when posterior of $\lambda_1$ and $\lambda_2$ equal is $0$, so $H_0$ is rejected.
+  [probability $\propto$ acceptance of $H_0$]
+
+
+## 4  
+Given $X_1 \sim N(0,1)$ and $X_{t+1}|X_t \sim N(\rho X_t,1-\rho^2)$
+
+- *Likelihood*
+
+  \begin{align*}
+    \mathcal{L}(\rho|X_1,.....,X_T) & = \prod_{t=2}^T f(X_t|X_{t-1}) f(X_1) \\
+    & \propto (1-\rho^2)^{-\frac{T-1}{2}} \text{exp}\{\frac{-1}{2} [\frac{\sum (X_t - \rho X_{t-1})^2}{1-\rho^2} + X_1^{2}]\}
+  \end{align*}
+  
+- *Prior*
+
+  $\rho \sim  Uniform(-1,1)$
+  
+  $\pi(\rho) = \frac{1}{2} \text{I}_{\rho \in (-1,1)}$
+  
+- *Posterior distribution*
+
+  \begin{align*}
+     P(\rho|X_1,....,X_T) & \propto \mathcal{L}(\rho|X_1,.....,X_T) \text{ x } \pi(\rho) \\
+     & \propto (1-\rho^2)^{-\frac{T-1}{2}} \text{exp}\{\frac{-1}{2} [\frac{\sum (X_t - \rho X_{t-1})^2}{1-\rho^2} + X_1^{2}]\} \text{I}_{\rho \in (-1,1)} 
+  \end{align*}
+
+So, we propose $u \sim  uniform(-1,1)$ as proposal density, when $u*M \leq P(\rho^{*}|X_1,....,X_T)$ then we accept $\rho^{*}$.
+Here $M$ = maximum value of $P(\rho|X_1,....,X_T)$
+
+```{r,warning=FALSE}
+library(mvtnorm)
+# Data
+T <- 10
+rho <- 0.5
+X <- numeric(T)
+X[1] <- rnorm(1, 0, 1)
+for (t in 2:T) {
+  X[t] <- rnorm(1, rho * X[t - 1], sqrt(1 - rho^2))
+}
+
+# Function to calculate the likelihood
+likelihood <- function(rho, X) {
+  prod(dnorm(X[2:T], mean = rho * X[1:(T-1)], sd = sqrt(1 - rho^2)))
+}
+
+# Function to calculate the prior
+prior <- function(rho) {
+  dunif(rho, min = -1, max = 1)
+}
+
+# Function to calculate the unnormalized posterior
+unnormalized_posterior <- function(rho, X) {
+  likelihood(rho, X) * prior(rho)
+}
+
+# Parameters for acceptance-rejection sampling
+M <- max(sapply(seq(-1,1,length.out=1000),function(rho){likelihood(rho,X)*prior(rho)}))
+N <- 1e5  # Number of samples to draw
+
+# Acceptance-rejection sampling
+rho_samples <- numeric(N)
+counter <- 1
+while (counter <= N) {
+  rho_proposal <- runif(1, min = -1, max = 1)
+  u <- runif(1)
+  if (u * M <= unnormalized_posterior(rho_proposal, X)) {
+    rho_samples[counter] <- rho_proposal
+    counter <- counter + 1
+  }
+}
+
+# Plot kernel density estimate of the posterior distribution
+library(ggplot2)
+ggplot(data.frame(rho_samples), aes(x = rho_samples)) +
+  geom_density(fill = "skyblue", alpha = 0.5) +
+  labs(title = "Kernel Density Estimate of Posterior Distribution",
+       x = expression(rho),
+       y = "Density")
+```
+
+- *Joint posterior predictive density of $\pi(X_{T+1},X_{T+2}|X_1,....,X_T)$* 
+
+  \(\pi(X_{T+1},X_{T+2}|X_1,....,X_T) = \int_{-\infty}^{\infty} \pi(X_{T+1},X_{T+2}|\rho) P(\rho|X_1,....,X_T) d\rho\)
+  
+```{r}
+#drawing from posterior predictive distribution
+ppd_X = matrix(NA, nrow = N, ncol = 2)
+
+ppd_X[,1] = rnorm(N, rho_samples*X[T], sqrt(1 - rho_samples^2))
+ppd_X[,2] = rnorm(N, rho_samples*ppd_X[,1], sqrt(1 - rho_samples^2))
+
+#2D density plot of PPD
+ggplot(as.data.frame(ppd_X), aes(V1, V2))+
+  stat_density_2d_filled(aes(fill = after_stat(level)))+
+  scale_color_viridis_c()+
+  labs(x = 'X_T+1',
+       y = 'X_T+2',
+       title = 'Posterior Predictive Distribution of X_T+1, X_T+2 given X_1, ..., X_T')
+```
+
+
+## 5 
+
+- To draw samples from random vector $(X,Y)$  following the bivariate normal distribution with means $\mu_1 = 0, \mu_2 = 0$ and standard deviations $\sigma_1 = 1,\sigma_2 = 2$ and correlation $\rho = 0.5$.
+
+```{r,warning=FALSE}
+library(mvtnorm)
+library(ggplot2)
+
+# given parameters
+B <- 1e5
+mu <- c(0,0)
+sigma <- c(1,2)
+rho <- 0.5
+
+# generating samples
+mat_sigma <- matrix(c(sigma[1]^2,rho*sigma[1]*sigma[2],rho*sigma[1]*sigma[2],sigma[2]^2),nrow=2,ncol=2)
+samples <- rmvnorm(B,mean = mu,sigma = mat_sigma)
+
+df <- data.frame(X = samples[,1],Y = samples[,2])
+
+#  scatter plot with 2D-kernel density heatmap
+p <- ggplot(df, aes(x = X, y = Y)) +
+  geom_point(alpha = 0.1) + # Scatter plot
+  stat_density_2d(aes(fill = ..level..), geom = "polygon") + # 2D kernel density heatmap
+  scale_fill_gradient(low = "red", high = "skyblue") + # Color gradient
+  theme_minimal() + # Minimal theme
+  labs(title = "Scatter Plot with 2D Kernel Density Heatmap", x = "X", y = "Y")
+
+p
+```
+
+- **Sampling by Markov fashion**
+   
+   $\{(X^{(b)},Y^{(b)}),b=1,2....,B\}$
+   
+   Let initial samples be $X^{(0)} = 0, Y^{(0)} = 0$
+   
+   * $X^{(b)}$ from conditional distribution of $X$ given $Y = Y^{(b−1)}$ then $X|Y=Y^{(b−1)}$ will follows Normal distribution with mean = $\mu_1 + \rho \frac{\sigma_1}{\sigma_2}(Y^{(b−1)} - \mu_2)$  and variance = $(1-\rho^2)\sigma_1^2$.
+   
+   * $Y^{(b)}$ from conditional distribution of $Y$ given $X = X^{(b)}$ then $Y|X=X^{(b)}$ will follows Normal distribution with mean = $\mu_2 + \rho \frac{\sigma_2}{\sigma_1}(X^{(b)} - \mu_1)$  and variance = $(1-\rho^2)\sigma_2^2$.
+   
+```{r}
+library(mvtnorm)
+library(ggplot2)
+
+# given parameters
+B <- 1e5
+B0 <- 1e3
+mu <- c(0,0)
+sigma <- c(1,2)
+rho <- 0.5
+
+# given initial samples
+x0 <- 0
+y0 <- 0
+initial_sample <- c(x0,y0)
+
+# making matrix to store samples
+markov_samples <- matrix(NA,nrow=B+B0,ncol=2)
+
+markov_samples[1,] <- initial_sample
+
+# generate samples in Markov fashion
+for(b in 2:(B+B0))
+{
+  # x(b) value
+  markov_samples[b,1] <- rnorm(1,mean = mu[1] + (rho*sigma[1]/sigma[2])*(markov_samples[b-1,2] - mu[2]),sd = sqrt((1 - rho^2) * sigma[1]^2))
+  # y(b) value
+  markov_samples[b,2] <- rnorm(1,mean = mu[2] + (rho*sigma[2]/sigma[1])*(markov_samples[b,1] - mu[1]),sd = sqrt((1 - rho^2) * sigma[2]^2))
+}
+
+# first B0 samples
+samples <- markov_samples[(B0+1):(B+B0), ]
+head(samples)
+
+df_markov <- data.frame(X = markov_samples[-((B0+1):(B+B0)),1], Y = markov_samples[-((B0+1):(B+B0)),2])
+
+# scatter plot with 2D kernel density heatmap
+pm <- ggplot(df_markov, aes(x = X, y = Y)) +
+  geom_point(alpha = 0.1) + # Scatter plot
+  stat_density_2d(aes(fill = ..level..), geom = "polygon") + # 2D kernel density heatmap
+  scale_fill_gradient(low = "red", high = "skyblue") + # Color gradient
+  theme_minimal() + # Minimal theme
+  labs(title = "Scatter Plot with 2D Kernel Density Heatmap (Markov Sampling)", x = "X", y = "Y")
+
+pm
+```
+    
+- **Histogram of $X$ and $Y$**
+   Individually for $X$ and $Y$ are following Normal distribution.
+   
+   - $X \sim  \text{Normal}(\mu_1 = 0,\sigma_1^2 = 1)$
+   
+   - $Y \sim  \text{Normal}(\mu_2 = 0,\sigma_2^2 = 4)$
+   
+```{r}
+# histogram of X
+hist(markov_samples[,1])
+plot(density(markov_samples[,1]),lwd=2)
+
+# histogram of Y
+hist(markov_samples[,2])
+plot(density(markov_samples[,2]),lwd=2)
+```
+   
+  
