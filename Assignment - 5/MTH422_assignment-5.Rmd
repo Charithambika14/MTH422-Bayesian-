@@ -1,0 +1,585 @@
+---
+title: "mth422_assignment-5"
+author: "Charitha"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+## Assignment - 5
+
+### question - 1
+Given a dataset called **gambia**, in this $Y_i$ is the response variable which is the binary  indicator that child $i$ tested positive for malaria (pos) and the remaining seven variables as $X_{ij}$ are covariates.
+
+### (a)
+To fit the logistic regression model
+\begin{align*}
+  logit[Prob(Y_i = 1)] & = \sum_{j=1}^p X_{ij} \beta_j
+\end{align*}
+with uninformative priors for the $\beta_j$
+
+```{r,echo=FALSE,warning=FALSE}
+rm(list = ls())
+library(rjags)
+library(geoR)
+data(gambia)
+
+Y <- gambia$pos
+X <- as.matrix(gambia[ ,-3])
+n <- nrow(X)
+p <- ncol(X)
+
+model_string <- "model {
+  for (i in 1:n) {
+    logit(pr[i]) <- inprod(X[i, ],beta[1:p])
+    Y[i] ~ dbern(pr[i])
+  }
+  
+  # Priors for coefficients
+  for (j in 1:p) {
+    beta[j] ~ dnorm(0, 1e-2)
+  }
+}"
+
+data <- list(Y=Y,X=X,n=n,p=p)
+model <- jags.model(textConnection(model_string),data = data, n.chains = 1, quiet = TRUE)
+update(model, 1e4, progress.bar = "none")
+samps <- coda.samples(model, variable.names = c("beta"),n.iter = 10000, thin = 5, progress.bar = "none")
+cat("Summary of beta's \n")
+summary(samps)
+# Set the layout to have 2 rows and 7 columns
+par(mfrow = c(2, 7),pty = "m")
+
+# Increase the width of the plot window
+op <- par(mar = c(4, 4, 2, 1) + 0.1)
+
+# Plot the samples
+plot(samps)
+
+# Reset the plot settings
+par(op)
+```
+
+### (b)
+Now we will be using random effect term that are labels of the e location for observation $i$. To fit the random effects logistic regression model
+
+\begin{align*}
+  logit[Prob(Y_i = 1)] & = \sum_{j=1}^p X_{ij} \beta_j + \alpha_{s_i} \\
+  \alpha_l & \sim Normal(0,\tau^2)
+end{align*}
+
+with  uninformative priors $\beta_j$ and $\tau$.
+
+```{r,echo=FALSE,warning=FALSE}
+rm(list = ls())
+library(rjags)
+library(geoR)
+data(gambia)
+
+Y <- gambia$pos
+X <- as.matrix(gambia[ ,-3])
+n <- nrow(X)
+p <- ncol(X)
+
+params <- c('beta', 'tausq.inv') #tau is the precision of distn of alpha's.
+
+library(tidyr)
+s_unique <- unique(gambia[,1:2])
+s <- nrow(s_unique)
+index <- 1 : s
+s_ind <-  index[match(paste(gambia$x, gambia$y), paste(s_unique$x, s_unique$y))]
+
+data <- list(Y = Y, n = n, p = p, X = X, s_ind = s_ind, s = s)
+
+model_string_2 = textConnection("model{
+      #Likelihood
+      for(i in 1:n){
+      Y[i] ~ dbinom(probs[i], 1)
+      logit(probs[i]) = inprod(X[i,], beta) + alpha[s_ind[i]]
+      }
+      
+      #Random_Effects
+      for(i in 1 : s){
+      alpha[i] ~ dnorm(0, tausq.inv)
+      }
+      
+      #Priors
+      for(j in 1:p){
+      beta[j] ~ dnorm(0, 1e-3)
+      }
+      tausq.inv ~ dgamma(0.01, 0.01)
+}")
+
+model_2 <- jags.model(model_string_2, data = data,
+                   quiet = TRUE)
+update(model_2, 1e4)
+
+samples2 <- coda.samples(model_2, variable.names = params,
+                       thin = 5, n.iter = 1e4)
+#plot(samples2)
+
+tau_post <- samples2[[1]][,8]
+
+alpha_post <- matrix(NA, nrow = s, ncol = length(tau_post))
+
+for(i in 1 : s){
+  alpha_post[i,] <- rnorm(length(tau_post), 0, 1/sqrt(tau_post))
+}
+
+alpha_post_mean <- rowMeans(alpha_post)
+
+library(ggplot2)
+ggplot()+
+  geom_point(aes(x = s_unique$x, y = s_unique$y, col = alpha_post_mean))
+```
+
+
+
+- The random effects logistic regression model is useful when there is clustering or grouping within the data, as it allows for variability between these groups. In this case, the children in the dataset are located in $65$ unique locations, each with its own characteristics that may influence the outcome variable $(Y_i = 1 \text{ or } Y_i = 0)$. By incorporating random effects ($\alpha_{s_i}$), we account for the potential differences between these locations that may affect the probability of the outcome.
+
+
+- Adding random effects to the model can lead to differences in the posteriors of the regression coefficients compared to a standard logistic regression model. This is because the random effects capture the variation between locations, which can affect the estimates of the fixed effects ($\beta_j$). In particular, the coefficients may shrink towards zero or show different patterns of association with the outcome variable when accounting for location-specific effects.
+
+
+### question - 2 
+Given the **galaxies** dataset, we have to model the observations using mixture of $K = 3$ normal distributions.
+
+\begin{align*}
+  Y & = \theta_1 Normal(\mu_1,\sigma_1^2) + \theta_2 Normal(\mu_2,\sigma_2^2) + \theta_3 Normal(\mu_3,\sigma_3^2) 
+\end{align*}
+
+```{r,echo=FALSE,warning=FALSE}
+rm(list = ls())
+library(MASS)
+data(galaxies)
+Y <- galaxies
+hist(Y,breaks=25)
+n <- length(Y)
+
+library(rjags)
+data <- list(Y = Y, N = n, K = 3, alpha = rep(1, 3))
+model_string <- textConnection("model{
+  # Likelihood
+  for (i in 1:N) {
+    Y[i] ~ dnorm(mu[Z[i]], tau[Z[i]])
+    Z[i] ~ dcat(theta[])
+  }
+  for (j in 1:K) {
+    mu[j] ~ dnorm(0, 1e-8)
+    tau[j] ~ dgamma(0.01, 0.01)
+  }
+
+  theta[1:K] ~ ddirch(alpha[])
+}")
+params <- c('mu', 'tau', 'theta')
+model <- jags.model(model_string, data = data,quiet = TRUE)
+update(model, 2e4)
+samples = coda.samples(model, variable.names = params, n.iter = 1e4)
+summary(samples)
+
+y <- seq(5e3, 4e4, 100)
+mu.post <- samples[[1]][,1:3]
+tau.post <- samples[[1]][,4:6]
+theta.post <- samples[[1]][,7:9]
+
+S <- 1e4
+
+post_density <- matrix(NA, nrow = S, ncol = 351)
+
+for(i in 1:S){
+  mu <- as.numeric(mu.post[i,])
+  sigma <- as.numeric(1/sqrt(tau.post[i,]))
+  theta <- as.numeric(theta.post[i, ])
+  
+  mix_gauss <- function(x) {
+    theta[1] * dnorm(x, mean = mu[1], sd = sigma[1]) +
+      theta[2] * dnorm(x, mean = mu[2], sd = sigma[2]) +
+      theta[3] * dnorm(x, mean = mu[3], sd = sigma[3])
+  }
+  
+  post_density[i, ] <- sapply(y, mix_gauss)
+  #print(paste0('Done: ', i))
+}
+
+post_median <- apply(post_density, 2, median)
+post_2.5.quantile <- apply(post_density, 2, quantile, probs = 0.025)
+post_97.5.quantile <- apply(post_density, 2, quantile, probs = 0.975)
+
+par(mfrow = c(1,1))
+
+library(ggplot2)
+ggplot()+
+  geom_histogram(aes(x = Y, y = after_stat(density)), col = 'lightyellow')+
+  geom_line(aes(y, post_median, col = 'Median'), size = 1)+
+  geom_line(aes(y, post_2.5.quantile, col = 'Quantile: 0.025'), linetype = 'dashed', linewidth = 1)+
+  geom_line(aes(y, post_97.5.quantile, col = 'Quantile: 0.975'), linetype = 'dashed', linewidth = 1)+
+  labs(col = c("blue","red","darkgreen"))
+```
+
+
+By observing the graph, we can say that the mixture of $K=3$ model fit the data well.
+
+### question - 3
+Given the data of **Mr.October**, \(Y_1 = 563, N_1 = 2820,
+Y_2 = 10, N_2 = 27\)
+
+\begin{align*}
+  M1 &: Y_1|\lambda_1 \sim poisson(N_1\lambda_1) \text{ and }  Y_2|\lambda_2 \sim poisson(N_2\lambda_2) \\
+  M2 &: Y_1|\lambda_0 \sim poisson(N_1\lambda_0) \text{ and }  Y_2|\lambda_0 \sim poisson(N_2\lambda_0)
+\end{align*}
+
+To find the bayes factors, DIC and WAIC with priors assumption $\lambda_j \sim Uniform(0,c)$ for c = $1$ and $10$
+
+```{r,echo=FALSE,warning=FALSE}
+rm(list = ls())
+
+# Data
+Y1 <- 563
+N1 <- 2820
+Y2 <- 10
+N2 <- 27
+c <- c(1,10)
+
+# Bayes factor
+# Define the Bayes factor function
+bayes_factor <- function(prior_c) {
+  p.y.m1 = pgamma(c, Y1+1, N1, log.p = T) + pgamma(c, Y2+1, N2, log.p = T) - log((prior_c^2)*N1*N2)
+  p.y.m2  = lfactorial(Y1+Y2) - (lfactorial(Y1)+lfactorial(Y2)) + 
+    (Y1 * log(N1) + Y2 * log(N2)) - (Y1 + Y2 + 1) * log(N1+N2) + 
+    pgamma(c, Y1+Y2+1, N1+N2, log.p = T)
+  out = exp(p.y.m2 - p.y.m1)
+  return(mean(out))
+}
+
+
+# Bayes factor for c = 1
+bayes_factor_c1 <- bayes_factor(prior_c = 1)
+cat("Bayes Factor for c = 1 is ", bayes_factor_c1, "\n")
+
+# Bayes factor for c = 10
+bayes_factor_c10 <- bayes_factor(prior_c = 10)
+cat("Bayes Factor for c = 10 is", bayes_factor_c10, "\n")
+
+# DIC
+library(rjags)
+library(coda)
+DIC <- function(c){
+model_string1  <- "model{
+  # Likelihood
+  Y1 ~ dpois(N1*lambda1)
+  Y2 ~ dpois(N2*lambda2)
+  
+  # priors
+  lambda1 ~ dunif(0,c)
+  lambda2 ~ dunif(0,c)
+}"
+
+model_string2  <- "model{
+  # Likelihood
+  Y1 ~ dpois(N1*lambda0)
+  Y2 ~ dpois(N2*lambda0)
+  
+  # priors
+  lambda0 ~ dunif(0,c)
+}"
+
+data <- list(Y1 = Y1, Y2 = Y2, N1 = N1, N2 = N2, c = c)
+model1 <- jags.model(textConnection(model_string1),
+                     data = data, n.chains = 1, quiet = TRUE)
+update(model1, 10000, progress.bar = "none")
+samps1 <- coda.samples(model1, variable.names = c("lambda1","lambda2"),
+                       n.iter = 20000, thin = 5, progress.bar = "none")
+
+model2 <- jags.model(textConnection(model_string2),
+                     data = data, n.chains = 1, quiet = TRUE)
+update(model2, 10000, progress.bar = "none")
+samps2 <- coda.samples(model2, variable.names = c("lambda0"),
+                       n.iter = 20000, thin = 5, progress.bar = "none")
+lambda1_values <- samps1[[1]][ ,1]
+lambda2_values <- samps1[[1]][ ,2]
+lambda0_values <- samps2[[1]][, 1]
+
+# after thinning, 4K post-burn-in samples left
+loglike.m1 <- sapply(1:4000, function(iter){
+  dpois(Y1,lambda = N1*lambda1_values[iter], log = T) + dpois(Y2,lambda = N2*lambda2_values[iter], log = T)})
+
+loglike.m2 <- sapply(1:4000, function(iter){
+  dpois(Y1, lambda = N1*lambda0_values[iter], log = T) + dpois(Y2, lambda = N2*lambda0_values[iter], log = T)})
+
+deviance.m1 <- -2 * loglike.m1
+deviance.m2 <- -2 * loglike.m2
+
+Dbar.m1 <- mean(deviance.m1)
+Dbar.m2 <- mean(deviance.m2)
+
+D.thetahat.m1 <- sum(dpois(Y1,lambda = N1*lambda1_values, log = T) + dpois(Y2,lambda = N2*lambda2_values, log = T))
+D.thetahat.m2 <- sum(dpois(Y1, lambda = N1*lambda0_values, log = T) + dpois(Y2, lambda = N2*lambda0_values, log = T))
+
+pD.m1 <- Dbar.m1 - D.thetahat.m1
+pD.m2 <- Dbar.m2 - D.thetahat.m2
+
+DIC.m1 <- pD.m1 + Dbar.m1
+DIC.m2 <- pD.m2 + Dbar.m2
+
+decision = ifelse(DIC.m1 < DIC.m2,"Model 1 is preferred","Model 2 is preferred")
+ return(list(DIC.m1,DIC.m2,decision))
+}
+cat("DIC values when c = 1 \n")
+DIC(c=1)
+cat("DIC values when c = 10 \n")
+DIC(c=10)
+
+# WAIC
+WAIC <- function(c){
+  model_string1  <- "model{
+  # Likelihood
+  Y1 ~ dpois(N1*lambda1)
+  Y2 ~ dpois(N2*lambda2)
+  
+  # priors
+  lambda1 ~ dunif(0,c)
+  lambda2 ~ dunif(0,c)
+}"
+  
+  model_string2  <- "model{
+  # Likelihood
+  Y1 ~ dpois(N1*lambda0)
+  Y2 ~ dpois(N2*lambda0)
+  
+  # priors
+  lambda0 ~ dunif(0,c)
+}"
+  
+  data <- list(Y1 = Y1, Y2 = Y2, N1 = N1, N2 = N2, c = c)
+  model1 <- jags.model(textConnection(model_string1),
+                       data = data, n.chains = 1, quiet = TRUE)
+  update(model1, 10000, progress.bar = "none")
+  samps1 <- coda.samples(model1, variable.names = c("lambda1","lambda2"),
+                         n.iter = 20000, thin = 5, progress.bar = "none")
+  
+  model2 <- jags.model(textConnection(model_string2),
+                       data = data, n.chains = 1, quiet = TRUE)
+  update(model2, 10000, progress.bar = "none")
+  samps2 <- coda.samples(model2, variable.names = c("lambda0"),
+                         n.iter = 20000, thin = 5, progress.bar = "none")
+  lambda1_values <- samps1[[1]][ ,1]
+  lambda2_values <- samps1[[1]][ ,2]
+  lambda0_values <- samps2[[1]][, 1]
+  
+  # after thinning, 4K post-burn-in samples left
+  loglike.m1 <- sapply(1:4000, function(iter){
+    dpois(Y1,lambda = N1*lambda1_values[iter], log = T) + dpois(Y2,lambda = N2*lambda2_values[iter], log = T)})
+  
+  loglike.m2 <- sapply(1:4000, function(iter){
+    dpois(Y1, lambda = N1*lambda0_values[iter], log = T) + dpois(Y2, lambda = N2*lambda0_values[iter], log = T)})
+  
+  posmeans.m1 <- mean(loglike.m1)
+  posmeans.m2 <- mean(loglike.m2)
+
+  posvars.m1 <- var(loglike.m1)
+  posvars.m2 <- var(loglike.m2)
+
+  WAIC.m1 <- -2 * posmeans.m1 + 2 * posvars.m1
+  WAIC.m2 <- -2 * posmeans.m2 + 2 * posvars.m2
+
+  decision <- ifelse(WAIC.m1 < WAIC.m2, "Model 1 is preferred","Model 2 is preferred")
+  return(list(WAIC.m1,WAIC.m2,decision))
+}
+cat("WAIC values when c = 1 \n")
+WAIC(c= 1)
+cat("WAIC values when c = 10 \n")
+WAIC(c=10)
+```
+
+### question - 4
+To fit logistic regression model to the gambia data and use posterior predictive checks to verify the model fits well
+
+```{r,echo=FALSE,warning=FALSE}
+rm(list = ls())
+library(geoR)
+data("gambia")
+Y <- gambia$pos
+X <- as.matrix(gambia[,-3])
+n <- nrow(X)
+p <- ncol(X)
+
+library(rjags)
+data <- list(Y = Y, n = n, p = p, X = X)
+
+model_string_1 = textConnection("model{
+      #Likelihood
+      for(i in 1:n){
+      Y[i] ~ dbern(pr[i])
+      logit(pr[i]) <- inprod(X[i,], beta)
+      }
+      #Priors
+      for(j in 1:p){
+      beta[j] ~ dnorm(0, 1e-3)
+      }
+}")
+
+model <- jags.model(model_string_1, data = data,quiet = TRUE)
+update(model, 1e4)
+samples <- coda.samples(model, variable.names = c("beta"),thin = 5, n.iter = 2e4)
+summary(samples)
+#plot(samples)
+D0 <- mean(Y)
+D <- samples[[1]]
+
+plot(density(D), xlab = "D", ylab = "Posterior density", xlim = c(-1,1))
+abline(v = D0, col="red")
+```
+
+
+### question - 5
+Given **WWWusage** dataset, we need to fit the auto regressive model
+
+\begin{align*}
+  Y_t|Y_{t−1}, ..., Y_1 & \sim Normal(\beta_0 + \beta_1 Y_{t−1} + ... + \beta_L Y_{t−L}, \sigma^2)\\
+  L & = \{1,2,3,4\}
+\end{align*}
+
+To select the best time lag $L$, I have used **WAIC** 
+```{r,echo=FALSE,warning=FALSE}
+# to select best time lag L = 1,2,3,4 using WAIC
+rm(list = ls())
+library(datasets)
+library(coda)
+library(rjags)
+data("WWWusage")
+Y <- WWWusage
+Time <- length(Y)
+
+# L = 1
+model_L1 <- "model{
+ # likelihood
+ for(t in 5:Time){
+  Y[t] ~ dnorm(mu[t],inv.var)
+  mu[t] <- beta0 + beta1*Y[t-1] 
+ }
+ 
+ #Priors
+ beta0 ~ dnorm(0, 0.00001)
+ beta1 ~ dnorm(0, 0.00001)
+ inv.var ~ dgamma(0.01, 0.01)
+ beta <- c(beta0, beta1)
+ sigma <- sqrt(1 / inv.var)
+}"
+data <- list(Y = Y, Time = Time)
+model <- jags.model(textConnection(model_L1),data = data, n.chains = 1, quiet = TRUE)
+update(model, 10000, progress.bar = "none")
+samps1 <- coda.samples(model, variable.names = c("beta", "sigma"),n.iter = 20000, thin = 5, progress.bar = "none")
+beta.L1 <- samps1[[1]][ ,1:2]
+sigma.L1 <- samps1[[1]][ ,3]
+
+loglike.l1 <- sapply(1:4000, function(iter){
+  sum(dnorm(Y[5:100], mean = beta.L1[iter,1]+beta.L1[iter,2]*Y[4:99],sd = sigma.L1[iter],log = T))
+})
+posmeans.l1 <- mean(loglike.l1)
+posvars.l1 <- var(loglike.l1)
+WAIC.l1 <- -2 * posmeans.l1 + 2 * posvars.l1
+
+# L = 2
+model_L2 <- "model{
+ # likelihood
+ for(t in 5:Time){
+  Y[t] ~ dnorm(mu[t],inv.var)
+  mu[t] <- beta0 + beta1*Y[t-1] + beta2*Y[t-2]
+ }
+ 
+ #Priors
+ beta0 ~ dnorm(0, 0.00001)
+ beta1 ~ dnorm(0, 0.00001)
+ beta2 ~ dnorm(0, 0.00001)
+ inv.var ~ dgamma(0.01, 0.01)
+ beta <- c(beta0, beta1, beta2)
+ sigma <- sqrt(1 / inv.var)
+}"
+data <- list(Y = Y, Time = Time)
+model <- jags.model(textConnection(model_L2),data = data, n.chains = 1, quiet = TRUE)
+update(model, 10000, progress.bar = "none")
+samps2 <- coda.samples(model, variable.names = c("beta", "sigma"),n.iter = 20000, thin = 5, progress.bar = "none")
+beta.L2 <- samps2[[1]][ ,1:3]
+sigma.L2 <- samps2[[1]][ ,4]
+
+loglike.l2 <- sapply(1:4000, function(iter){
+  sum(dnorm(Y[5:100], mean = (beta.L2[iter,1]+beta.L2[iter,2]*Y[4:99]+beta.L2[iter,3]*Y[3:98]),sd = sigma.L2[iter],log = T))
+})
+
+posmeans.l2 <- mean(loglike.l2)
+posvars.l2 <- var(loglike.l2)
+WAIC.l2 <- -2 * posmeans.l2 + 2 * posvars.l2
+
+# L = 3
+model_L3 <- "model{
+ # likelihood
+ for(t in 5:Time){
+  Y[t] ~ dnorm(mu[t],inv.var)
+  mu[t] <- beta0 + beta1*Y[t-1] + beta2*Y[t-2] + beta3*Y[t-3]
+ }
+ 
+ #Priors
+ beta0 ~ dnorm(0, 0.00001)
+ beta1 ~ dnorm(0, 0.00001)
+ beta2 ~ dnorm(0, 0.00001)
+ beta3 ~ dnorm(0, 0.00001)
+ inv.var ~ dgamma(0.01, 0.01)
+ beta <- c(beta0, beta1, beta2, beta3)
+ sigma <- sqrt(1 / inv.var)
+}"
+data <- list(Y = Y, Time = Time)
+model <- jags.model(textConnection(model_L3),data = data, n.chains = 1, quiet = TRUE)
+update(model, 10000, progress.bar = "none")
+samps3 <- coda.samples(model, variable.names = c("beta", "sigma"),n.iter = 20000, thin = 5, progress.bar = "none")
+beta.L3 <- samps3[[1]][ ,1:4]
+sigma.L3 <- samps3[[1]][ ,5]
+
+loglike.l3 <- sapply(1:4000, function(iter){
+  sum(dnorm(Y[5:100], mean = (beta.L3[iter,1]+beta.L3[iter,2]*Y[4:99]+beta.L3[iter,3]*Y[3:98]+beta.L3[iter,4]*Y[4:97]),sd = sigma.L3[iter],log = T))
+})
+
+posmeans.l3 <- mean(loglike.l3)
+posvars.l3 <- var(loglike.l3)
+WAIC.l3 <- -2 * posmeans.l3 + 2 * posvars.l3
+
+# L = 4
+model_L4 <- "model{
+ # likelihood
+ for(t in 5:Time){
+  Y[t] ~ dnorm(mu[t],inv.var)
+  mu[t] <- beta0 + beta1*Y[t-1] + beta2*Y[t-2] + beta3*Y[t-3] + beta4*Y[t-4]
+ }
+ 
+ #Priors
+ beta0 ~ dnorm(0, 0.00001)
+ beta1 ~ dnorm(0, 0.00001)
+ beta2 ~ dnorm(0, 0.00001)
+ beta3 ~ dnorm(0, 0.00001)
+ beta4 ~ dnorm(0, 0.00001)
+ inv.var ~ dgamma(0.01, 0.01)
+ beta <- c(beta0, beta1, beta2, beta3, beta4)
+ sigma <- sqrt(1 / inv.var)
+}"
+data <- list(Y = Y, Time = Time)
+model <- jags.model(textConnection(model_L4),data = data, n.chains = 1, quiet = TRUE)
+update(model, 10000, progress.bar = "none")
+samps4 <- coda.samples(model, variable.names = c("beta", "sigma"),n.iter = 20000, thin = 5, progress.bar = "none")
+beta.L4 <- samps4[[1]][ ,1:5]
+sigma.L4 <- samps4[[1]][ ,6]
+
+loglike.l4 <- sapply(1:4000, function(iter){
+  sum(dnorm(Y[5:100], mean = (beta.L4[iter,1]+beta.L4[iter,2]*Y[4:99]+beta.L4[iter,3]*Y[3:98]+beta.L4[iter,4]*Y[4:97]+beta.L4[iter,5]*Y[5:96]),sd = sigma.L4[iter],log = T))
+})
+
+posmeans.l4 <- mean(loglike.l4)
+posvars.l4 <- var(loglike.l4)
+WAIC.l4 <- -2 * posmeans.l4 + 2 * posvars.l4
+
+WAIC <- c(WAIC.l1,WAIC.l2,WAIC.l3,WAIC.l4)
+results <- data.frame(L = c(1:4),WAIC = WAIC)
+results
+# L = 2 has the minimum value of WAIC than other time lags, so model with time lag L = 2 is the best model.
+```
+
+For time lag $L = 2$, the WAIC value is very less as compared to other time lag model.
+
+So, the best fit model of time lag $L = 2$ is preferred.
